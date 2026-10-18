@@ -20,9 +20,19 @@
  */
 import { config, isGeminiEnabled } from "../../config.js";
 import { CuratedFallbackProvider } from "./curated-fallback.js";
+import {
+  clearProviderCooldown,
+  isProviderCoolingDown,
+  providerCooldown,
+  reasonForError,
+  recordProviderCooldown,
+  recordsCooldown,
+} from "./provider-cooldown.js";
 import type { SolverResult } from "../../../../shared/contract.js";
 import type { TutorContext, TutorProvider, TutorReply, TutorStreamHandlers, TutorUsage } from "./types.js";
 import { isTopicId, detectTopicId } from "./topic-detection.js";
+
+export { clearProviderCooldown };
 
 /** Backward-compatible alias for the provider factory. */
 export async function createProvider(): Promise<TutorProvider> {
@@ -81,6 +91,22 @@ export interface StreamOutcome {
   effectiveTopicId: string;
   /** The validated plan when the AI provider drove the turn. */
   plan?: import("./orchestrator.js").TutorPlan;
+  /**
+   * Sanitized, user-presentable reason when an enabled AI provider failed
+   * BEFORE its first text delta and the curated fallback answered instead.
+   * Undefined whenever the AI provider produced the reply.
+   */
+  fallbackReason?: string;
+}
+
+/**
+ * Map a provider failure to a fixed, user-presentable reason. Never forwards
+ * raw error text (which could embed request details) — the category, class
+ * name, and HTTP status from the SDK are enough. Single source: the cooldown
+ * module's reasonForError (kept as an alias for existing callers/tests).
+ */
+export function sanitizeProviderError(err: unknown): string {
+  return reasonForError(err);
 }
 
 /**
@@ -102,6 +128,35 @@ export async function streamWithFallback(
   };
 
   if (isGeminiEnabled()) {
+    // A confirmed rate limit was recorded for this provider: do not spend
+    // another request on it until the cooldown expires. The curated fallback
+    // answers and the response honestly reports the recorded restriction
+    // (temporary rate limit, daily quota, or non-retryable access issue).
+    if (isProviderCoolingDown("gemini")) {
+      const cooldown = providerCooldown("gemini");
+      const fallbackReason = cooldown?.reason ?? "AI rate limit reached";
+      console.error(
+        JSON.stringify({
+          event: "ai_fallback_to_curated",
+          provider: "gemini",
+          reason: fallbackReason,
+          cooldownActive: true,
+          cooldownRemainingMs: cooldown ? cooldown.until - Date.now() : null,
+          ...(cooldown?.quotaMetric ? { quotaMetric: cooldown.quotaMetric } : {}),
+          ...(cooldown?.retryDelayMs ? { retryDelayMs: cooldown.retryDelayMs } : {}),
+          emittedDeltas: emitted,
+        }),
+      );
+      const curated = await runCuratedFallback(context, wrapped);
+      const effectiveTopicId = curated.topicId ?? detectTopicId(context.message, context.topicId);
+      streaming?.onResolved?.({ effectiveTopicId });
+      return {
+        reply: { ...curated, mode: "curated_fallback" },
+        streamedDeltas: false,
+        effectiveTopicId,
+        fallbackReason,
+      };
+    }
     try {
       const gemini = await import("./gemini-provider.js");
       const { planWithRetry, streamGeminiReply } = gemini;
@@ -110,11 +165,21 @@ export async function streamWithFallback(
       // A. Conversation understanding: validated plan. Planning failure must
       // not kill the answer — degrade to a planless direct compose instead.
       let planning: Awaited<ReturnType<typeof planWithRetry>> | undefined;
+      let planError: unknown;
       try {
         planning = await withTimeout(planWithRetry(context, streaming?.signal));
-      } catch (planErr) {
-        if (streaming?.signal?.aborted) throw planErr;
+      } catch (err) {
+        if (streaming?.signal?.aborted) throw err;
+        planError = err;
         planning = undefined;
+      }
+      // A confirmed 429 on the planner means the composer would hit the same
+      // rate limit — skip it entirely instead of spending a third request on a
+      // known-limited quota bucket. The same applies to non-retryable
+      // restrictions (auth/tier/permission), which would fail identically.
+      // The outer catch records the cooldown and serves the curated fallback.
+      if (recordsCooldown(planError)) {
+        throw planError;
       }
       const effectiveTopicId = planning && isTopicId(planning.plan.topicId)
         ? (planning.plan.topicId as string)
@@ -160,6 +225,32 @@ export async function streamWithFallback(
         // here would duplicate or contradict it. Surface the real failure.
         throw err;
       }
+      // Gemini was enabled and attempted, but failed before any user-visible
+      // text. The curated fallback answers (the sidebar label alone is not
+      // honest about WHY), so log a sanitized diagnostic and carry the reason
+      // through to the SSE `done` event. No user message, no credentials.
+      if (recordsCooldown(err)) {
+        // Record the cooldown BEFORE answering so the next turn cannot spend
+        // another request on the limited provider.
+        recordProviderCooldown("gemini", err);
+      }
+      const fallbackReason = reasonForError(err);
+      const cooldown = providerCooldown("gemini");
+      console.error(
+        JSON.stringify({
+          event: "ai_fallback_to_curated",
+          provider: "gemini",
+          reason: fallbackReason,
+          errorName: err instanceof Error ? err.name : "UnknownError",
+          status:
+            typeof (err as { status?: unknown })?.status === "number"
+              ? (err as { status: number }).status
+              : null,
+          emittedDeltas: emitted,
+          ...(cooldown?.quotaMetric ? { quotaMetric: cooldown.quotaMetric } : {}),
+          ...(cooldown?.retryDelayMs ? { retryDelayMs: cooldown.retryDelayMs } : {}),
+        }),
+      );
       try {
         const curated = await runCuratedFallback(context, wrapped);
         streaming?.onResolved?.({
@@ -169,6 +260,7 @@ export async function streamWithFallback(
           reply: { ...curated, mode: "curated_fallback" },
           streamedDeltas: false,
           effectiveTopicId: curated.topicId ?? detectTopicId(context.message, context.topicId),
+          fallbackReason,
         };
       } catch {
         // The message may be off-scope; the route reports a safe error.

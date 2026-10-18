@@ -44,6 +44,11 @@ export interface Message {
   level?: LearningLevel;
   /** Follow-up action ids the producer says it can honor next. */
   actions?: string[];
+  /**
+   * Present only when an enabled AI provider failed before its first text
+   * delta and the curated fallback answered instead (from the SSE done event).
+   */
+  fallbackReason?: string;
 }
 
 export interface ProviderStatus {
@@ -217,12 +222,17 @@ export default function App() {
   }, []);
 
   const cancelRef = useRef<(() => void) | null>(null);
+  // Synchronous in-flight guard: the streamingId state read lags a render,
+  // so rapid double submissions (double-click, chip + Enter) need a ref that
+  // is set before the first request is dispatched.
+  const inFlightRef = useRef(false);
 
   const send = useCallback(
     async (text: string, topicOverride?: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      if (streamingId || cancelRef.current) return; // no duplicate submissions
+      if (inFlightRef.current || cancelRef.current) return; // no duplicate submissions
+      inFlightRef.current = true;
       const effectiveTopicId = topicOverride ?? conversationStateRef.current.topicId;
       const levelForTurn = level;
 
@@ -282,6 +292,7 @@ export default function App() {
         });
         setStreamingId(null);
         cancelRef.current = null;
+        inFlightRef.current = false;
       };
 
       cancelRef.current = streamChat(
@@ -312,7 +323,7 @@ export default function App() {
               conversationStateRef.current = { ...conversationStateRef.current, topicId: info.effectiveTopicId };
               setTopicId(info.effectiveTopicId);
             }
-            finishTurn({ actions: info.actions });
+            finishTurn({ actions: info.actions, fallbackReason: info.fallbackReason });
             window.setTimeout(() => persistConversation(messagesRef.current), 60);
           },
           onError: (message) => {
@@ -327,6 +338,7 @@ export default function App() {
   const stop = useCallback(() => {
     if (cancelRef.current) cancelRef.current();
     cancelRef.current = null;
+    inFlightRef.current = false;
     if (streamingId) {
       const id = streamingId;
       setMessages((prev) =>

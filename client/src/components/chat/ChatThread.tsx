@@ -150,6 +150,11 @@ function AssistantMessage({
             Generation stopped — showing the partial response.
           </p>
         )}
+        {m.fallbackReason && (
+          <p className="message-fallback-note" role="note">
+            AI request failed: {m.fallbackReason}. Showing a curated lesson instead.
+          </p>
+        )}
         <div className="message-foot">
           <ModeLabel mode={m.mode} />
         </div>

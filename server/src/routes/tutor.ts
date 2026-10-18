@@ -273,6 +273,7 @@ tutorRouter.post("/api/tutor/chat/stream", rateLimiter(config.ai.rateLimit.windo
         requestId,
         effectiveTopicId: outcome.effectiveTopicId,
         ...(outcome.usage ? { usage: outcome.usage } : {}),
+        ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
         actions:
           outcome.reply.mode === "ai"
             ? GEMINI_ACTIONS

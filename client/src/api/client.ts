@@ -103,8 +103,16 @@ export interface StreamCallbacks {
   /**
    * Completion metadata. The server re-sends NO text payload here; it
    * declares the effective topic and which follow-up actions it can honor.
+   * `fallbackReason` is present only when an enabled AI provider failed before
+   * its first text delta and the curated fallback answered instead.
    */
-  onDone: (info: { requestId?: string; usage?: StreamUsageMeta; effectiveTopicId?: string; actions?: string[] }) => void;
+  onDone: (info: {
+    requestId?: string;
+    usage?: StreamUsageMeta;
+    effectiveTopicId?: string;
+    actions?: string[];
+    fallbackReason?: string;
+  }) => void;
   /** Safe, user-presentable error (stream-level failure). */
   onError: (message: string) => void;
 }
@@ -214,7 +222,13 @@ export function streamChat(body: ChatRequest, callbacks: StreamCallbacks): () =>
               break;
             case "done":
               callbacks.onDone(
-                data as { requestId?: string; usage?: StreamUsageMeta; effectiveTopicId?: string; actions?: string[] },
+                data as {
+                  requestId?: string;
+                  usage?: StreamUsageMeta;
+                  effectiveTopicId?: string;
+                  actions?: string[];
+                  fallbackReason?: string;
+                },
               );
               return;
             case "error":

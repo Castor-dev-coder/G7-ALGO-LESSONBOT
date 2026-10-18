@@ -22,6 +22,7 @@
 import { GoogleGenAI } from "@google/genai";
 import type { ChatBlock, SolverResult } from "../../../../shared/contract.js";
 import { config } from "../../config.js";
+import { recordsCooldown } from "./provider-cooldown.js";
 import type { TutorContext, TutorProvider, TutorStreamHandlers, TutorUsage } from "./types.js";
 import {
   PLAN_RESPONSE_SCHEMA,
@@ -40,7 +41,14 @@ function sanitizeMarkdown(text: string): string {
 }
 
 function newClient(): GoogleGenAI {
-  return new GoogleGenAI({ apiKey: config.ai.geminiApiKey });
+  return new GoogleGenAI({
+    apiKey: config.ai.geminiApiKey,
+    // The SDK's default p-retry policy retries 429/500 up to 5 attempts per
+    // call. On a rate-limited quota that multiplies every request (and our
+    // planner retry would multiply it again), so disable SDK-level retries —
+    // rate-limit handling is ours (see provider-cooldown.ts).
+    httpOptions: { retryOptions: { attempts: 1 } },
+  });
 }
 
 /** Bounded recent conversation, role-labelled, per-message char cap. */
@@ -138,6 +146,14 @@ export async function planWithRetry(
   try {
     return await planWithGemini(context, signal);
   } catch (err) {
+    // A confirmed 429 means the quota bucket is exhausted — a retry inside the
+    // same turn would be rate-limited again. The same applies to non-retryable
+    // restrictions (auth/tier/permission/model), which would fail identically.
+    // Do not retry; the cooldown logic in streamWithFallback handles the wait
+    // and the curated fallback.
+    if (recordsCooldown(err)) {
+      throw err;
+    }
     const reason = err instanceof Error ? err.message.slice(0, 160) : String(err);
     const patched: TutorContext = {
       ...context,
@@ -270,7 +286,18 @@ export async function streamGeminiReply(
       throw abortErr;
     }
     const message = err instanceof Error ? err.message : "unknown error";
-    throw new Error(`Gemini provider failed: ${message.slice(0, 200)}`);
+    const wrapped = new Error(`Gemini provider failed: ${message.slice(0, 200)}`);
+    // Preserve the diagnostic fields the fallback reason and cooldown
+    // classification key on — never the message content beyond the first
+    // 200 chars, and never credentials.
+    const status = (err as { status?: unknown })?.status;
+    if (typeof status === "number") (wrapped as { status?: number }).status = status;
+    const headers = (err as { headers?: unknown })?.headers;
+    if (headers) (wrapped as { headers?: unknown }).headers = headers;
+    if (err instanceof Error && err.name && err.name !== "Error") {
+      (wrapped as { name?: string }).name = err.name;
+    }
+    throw wrapped;
   }
 }
 

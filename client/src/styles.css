@@ -457,6 +457,16 @@ body {
   padding: 6px 10px;
 }
 
+.message-fallback-note {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: var(--text-muted, #64748b);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
 .message-error {
   color: var(--error);
   background: #fef2f2;
