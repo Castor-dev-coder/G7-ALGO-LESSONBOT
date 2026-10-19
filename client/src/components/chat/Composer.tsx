@@ -2,6 +2,10 @@
  * Bottom-anchored composer. The input stays usable while a response streams;
  * the send button becomes a stop button during streaming, and Enter submits /
  * Shift+Enter inserts a newline.
+ *
+ * `draft` is an externally supplied seed question (from a landing-page topic
+ * action). It prefills the input and focuses it, and is never submitted on the
+ * visitor's behalf — they press Send themselves.
  */
 import { useEffect, useRef, useState } from "react";
 
@@ -11,9 +15,11 @@ interface ComposerProps {
   streaming: boolean;
   /** Optional placeholder copy (home screen vs active conversation). */
   placeholder?: string;
+  /** Seed question from the route; applied when it changes. */
+  draft?: string | null;
 }
 
-export function Composer({ onSend, onStop, streaming, placeholder }: ComposerProps) {
+export function Composer({ onSend, onStop, streaming, placeholder, draft = null }: ComposerProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -24,6 +30,16 @@ export function Composer({ onSend, onStop, streaming, placeholder }: ComposerPro
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [value]);
+
+  // Apply a seed question: fill the input, put the caret at the end, focus it.
+  useEffect(() => {
+    if (!draft) return;
+    setValue(draft);
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(draft.length, draft.length);
+  }, [draft]);
 
   const submit = () => {
     const text = value.trim();

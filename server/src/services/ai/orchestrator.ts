@@ -107,6 +107,42 @@ const planSchema = z.object({
   clarify: z.string().max(400).nullable().optional(),
 });
 
+/**
+ * OpenAI function-tool wrapper mirroring PLAN_RESPONSE_SCHEMA. The plan shape
+ * is identical; only the wire format differs (JSON Schema without the
+ * GenAI-specific `nullable` keyword — fields are simply optional).
+ */
+export const PLAN_TOOL_NAME = "submit_plan";
+export const PLAN_TOOL_SCHEMA = {
+  type: "function",
+  function: {
+    name: PLAN_TOOL_NAME,
+    description: "Submit the conversation plan as a strict JSON object matching the schema.",
+    parameters: {
+      type: "object",
+      properties: {
+        intent: { type: "string", enum: [...PLANNER_INTENTS] },
+        topicId: { type: "string", enum: [...TOPIC_IDS] },
+        tool: { type: "string", enum: [...TUTOR_TOOLS] },
+        toolInput: {
+          type: "object",
+          properties: {
+            vertices: { type: "array", items: { type: "string" } },
+            edges: { type: "array", items: { type: "array", items: { type: "string" } } },
+            k: { type: "number" },
+            seed: { type: "number" },
+            trials: { type: "number" },
+            steps: { type: "number" },
+          },
+        },
+        presentation: { type: "string", enum: [...PRESENTATIONS] },
+        clarify: { type: "string" },
+      },
+      required: ["intent"],
+    },
+  },
+} as const;
+
 /** Normalize/validate one raw model plan; falsy on rejection. */
 export function validatePlan(raw: unknown): TutorPlan | null {
   const parsed = planSchema.safeParse(raw);

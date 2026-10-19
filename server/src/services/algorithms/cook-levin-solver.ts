@@ -220,7 +220,7 @@ export function solveCookLevin(input: unknown): SolverResult {
   steps.push({
     step: 2,
     title: "Encode the initial configuration",
-    description: `Row 0 spells the input '${parsed.input}' with blanks elsewhere, and the head starts at cell 0 in state ${m.startState}. This contributes ${H + 1 + (H - 1) * m.states.length} unit clauses.`,
+    description: `Row 0 spells the input '${parsed.input}' with blanks elsewhere, and the head starts at cell 0 in state ${m.startState}. This contributes ${H * m.alphabet.length} symbol clauses (each cell gets its symbol) and ${H * m.states.length} head/state clauses (head only at cell 0 in ${m.startState}) — ${H * (m.alphabet.length + m.states.length)} unit clauses in total.`,
   });
 
   steps.push({

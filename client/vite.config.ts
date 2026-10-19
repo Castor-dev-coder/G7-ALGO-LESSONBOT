@@ -13,9 +13,21 @@ export default defineConfig({
       },
     },
   },
+  // `vite preview` serves the production build; the same API proxy keeps the
+  // built app verifiable end to end (and SPA fallback covers /chat on refresh).
+  preview: {
+    port: 4173,
+    proxy: {
+      "/api": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
+    },
+  },
   resolve: {
     alias: {
       "@shared/contract": fileURLToPath(new URL("../shared/contract.ts", import.meta.url)),
+      "@shared/landing-scenes": fileURLToPath(new URL("../shared/landing-scenes.ts", import.meta.url)),
     },
   },
   test: {

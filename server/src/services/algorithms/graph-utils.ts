@@ -213,3 +213,27 @@ export function toGraphData(
 export function edgeId(a: string, b: string): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
+
+/**
+ * Pick a deterministic layout that matches the graph's shape: a simple path
+ * (n−1 edges, exactly two degree-1 vertices, the rest degree 2) reads best
+ * left-to-right; anything else (cycles, triangles, general graphs) uses the
+ * grid, which preserves topology honestly instead of drawing every graph as
+ * a line.
+ */
+export function suggestLayout(raw: RawGraph): "linear" | "grid" {
+  const n = raw.vertices.length;
+  if (n <= 2) return "grid";
+  const degree = new Map<string, number>(raw.vertices.map((v) => [v, 0]));
+  for (const [a, b] of raw.edges) {
+    degree.set(a, (degree.get(a) ?? 0) + 1);
+    degree.set(b, (degree.get(b) ?? 0) + 1);
+  }
+  if (raw.edges.length === n - 1) {
+    const degrees = [...degree.values()];
+    const ones = degrees.filter((d) => d === 1).length;
+    const twos = degrees.filter((d) => d === 2).length;
+    if (ones === 2 && twos === n - 2) return "linear";
+  }
+  return "grid";
+}

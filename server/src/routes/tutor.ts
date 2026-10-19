@@ -306,7 +306,10 @@ function friendlyStreamError(err: unknown): string {
   if (err instanceof Error) {
     if (err.name === "AbortError") return "Generation was stopped.";
     if (err.message.includes("timed out")) return "The AI request timed out. Please try again.";
-    if (err.message.includes("Gemini provider failed") && !(err.message.includes("empty stream") || err.message.includes("exceeded"))) {
+    if (
+      err.message.includes("provider failed") &&
+      !(err.message.includes("empty stream") || err.message.includes("exceeded"))
+    ) {
       return "The AI provider encountered an error. Please try again.";
     }
     if (err.message.includes("empty stream")) return "The AI provider returned an empty response. Please try again.";

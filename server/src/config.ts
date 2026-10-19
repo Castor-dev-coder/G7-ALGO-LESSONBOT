@@ -51,7 +51,13 @@ export const config = {
     geminiApiKey: process.env.GEMINI_API_KEY ?? "",
     geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
     // Owner attestation that the Gemini terms/audience gate was reviewed.
-    complianceAttested: bool(process.env.GEMINI_AUDIENCE_COMPLIANCE_ATTESTED, false),
+    complianceAttested: bool(process.env.AI_AUDIENCE_COMPLIANCE_ATTESTED, false),
+    // xKiro (OpenAI-compatible Chat Completions). No audience-compliance gate
+    // applies here — the Gemini 18+ attestation is Gemini-specific.
+    xkiroApiKey: process.env.XKIRO_API_KEY ?? "",
+    xkiroBaseUrl: process.env.XKIRO_BASE_URL ?? "https://api.xkiro.com/v1",
+    // Exact vendor/model identifier from the xKiro catalog. Empty = disabled.
+    xkiroModel: process.env.XKIRO_MODEL ?? "",
     // Hard request cap for AI routes (per window), independent of provider quota.
     rateLimit: {
       windowMs: 60_000,
@@ -81,4 +87,23 @@ export function isGeminiEnabled(): boolean {
     config.ai.geminiApiKey.length > 0 &&
     config.ai.complianceAttested
   );
+}
+
+/**
+ * Pure predicate for xKiro readiness (separated from config loading so it is
+ * directly testable). Enabled only when ALL of the following hold:
+ *  - AI_PROVIDER=xkiro is explicitly requested
+ *  - XKIRO_API_KEY is set (server-side only)
+ *  - XKIRO_MODEL is set to the exact vendor/model identifier from the xKiro
+ *    catalog
+ *
+ * The Gemini audience-compliance attestation is Gemini-specific and is NOT
+ * applied to xKiro.
+ */
+export function xkiroConfigured(ai: { provider: string; xkiroApiKey: string; xkiroModel: string }): boolean {
+  return ai.provider === "xkiro" && ai.xkiroApiKey.length > 0 && ai.xkiroModel.length > 0;
+}
+
+export function isXKiroEnabled(): boolean {
+  return xkiroConfigured(config.ai);
 }

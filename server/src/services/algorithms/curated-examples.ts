@@ -150,7 +150,8 @@ export interface ComputationIntent {
 }
 
 /** Wording that indicates the student wants to SEE a computation. */
-const ACTION_RE = /\bexample\b|\bdemo\b|\btrace\b|\bwalk ?through\b|\brun\b|\bsolve\b|\bcompute\b|\bshow\b/i;
+const ACTION_RE =
+  /\bexample\b|\bdemo\b|\btrace\b|\bwalk ?through\b|\brun\b|\bsolve\b|\bcompute\b|\bshow\b|\bsimply\b/i;
 
 /**
  * Decide whether the student's message asks for a computed example, and which
@@ -158,11 +159,19 @@ const ACTION_RE = /\bexample\b|\bdemo\b|\btrace\b|\bwalk ?through\b|\brun\b|\bso
  * topic selector is a global default — a student typing "run a Max-Cut demo"
  * while any topic is selected means Max-Cut, never the topic's default example.
  */
+/**
+ * Typographic dashes the product's own copy uses in algorithm names
+ * ("Cook–Levin", "Max–Cut" — en dash U+2013 and friends). Matching runs on
+ * text where these are folded to a plain hyphen, so the keyword regexes above
+ * (which accept an ASCII hyphen or a space) see the name they expect.
+ */
+const DASHES = /[\u2010-\u2015\u2212]/g;
+
 export function resolveComputation(
   message: string,
   topicId: string | null,
 ): ComputationIntent | undefined {
-  const text = message.toLowerCase();
+  const text = message.toLowerCase().replace(DASHES, "-");
 
   // Explicit algorithm keyword PLUS action wording ("run a Max-Cut demo").
   // Naming an algorithm alone ("explain polynomial reductions") is not a

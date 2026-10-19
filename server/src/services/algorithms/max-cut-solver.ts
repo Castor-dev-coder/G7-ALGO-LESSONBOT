@@ -43,7 +43,7 @@ export function solveMaxCut(input: unknown): SolverResult {
     step: 1,
     title: "Set up the seeded experiment",
     description: `Graph with ${raw.vertices.length} vertices and ${m} edges. Each of the ${trials} trials flips a fair seeded coin per vertex (seed = ${seed}) and counts the cut edges. The theoretical expectation is E[cut] = m/2 = ${expected}.`,
-    graph: toGraphData(raw),
+    graph: toGraphData(raw, undefined, undefined, "grid"),
   });
 
   for (let t = 0; t < trials; t++) {
@@ -91,6 +91,7 @@ export function solveMaxCut(input: unknown): SolverResult {
       raw,
       (v) => (best.assignment[v] === "A" ? "side_a" : "side_b"),
       (a, b) => (best.assignment[a] !== best.assignment[b] ? "cut" : "uncut"),
+      "grid",
     ),
     table: {
       columns: [

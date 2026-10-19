@@ -74,6 +74,7 @@ const { mockIsGeminiEnabled, mockConfigRef, streamControl, mockModels } = vi.hoi
 vi.mock("../src/config.js", () => ({
   config: mockConfigRef.current,
   isGeminiEnabled: mockIsGeminiEnabled,
+  isXKiroEnabled: () => false,
 }));
 
 vi.mock("@google/genai", () => ({
@@ -207,7 +208,8 @@ describe("streamWithFallback forwards real deltas", () => {
     expect(sanitizeProviderError(withStatus(401))).toBe("AI service rejected the credentials");
     expect(sanitizeProviderError(withStatus(403))).toBe("AI service denied access");
     expect(sanitizeProviderError(withStatus(404))).toBe("AI model is not available");
-    expect(sanitizeProviderError(withStatus(429))).toBe("AI access is not available");
+    expect(sanitizeProviderError(withStatus(429))).toBe("AI rate limit reached");
+    expect(sanitizeProviderError(withStatus(429), "gemini")).toBe("AI access is not available");
     expect(
       sanitizeProviderError(rateLimitError({ quotaSubject: "50000/day/service/generate_content_requests" })),
     ).toBe("AI daily quota exhausted");

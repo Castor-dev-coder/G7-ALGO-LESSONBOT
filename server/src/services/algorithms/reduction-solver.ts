@@ -9,7 +9,7 @@
  * witness check when a YES/NO answer can be determined for small graphs).
  */
 import type { SolverResult, TraceStep } from "../../../../shared/contract.js";
-import { LIMITS, RawGraph, toGraphData, validateGraph, ValidationError } from "./graph-utils.js";
+import { LIMITS, RawGraph, suggestLayout, toGraphData, validateGraph, ValidationError } from "./graph-utils.js";
 
 export interface ReductionInput {
   vertices: string[];
@@ -56,7 +56,7 @@ export function solveReduction(input: unknown): SolverResult {
     : null;
 
   const steps: TraceStep[] = [];
-  const baseGraph = toGraphData(raw, undefined, undefined, "linear", "straight");
+  const baseGraph = toGraphData(raw, undefined, undefined, suggestLayout(raw), "straight");
 
   steps.push({
     step: 1,
@@ -95,6 +95,7 @@ export function solveReduction(input: unknown): SolverResult {
         raw,
         (v) => (witnessInfo.independentSet.includes(v) ? "selected" : "covered"),
         (a, b) => (cover.includes(a) || cover.includes(b) ? "covered" : "uncovered"),
+        suggestLayout(raw),
       ),
       table: {
         columns: [

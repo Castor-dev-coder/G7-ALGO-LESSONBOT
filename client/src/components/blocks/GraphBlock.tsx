@@ -4,19 +4,25 @@
  * pieces are dropped — an orphaned edge can never blank the canvas, and a
  * missing coordinate falls back to a deterministic grid position.
  *
- * Handle side (source/target) is dynamic: undirected teaching graphs let
- * React Flow pick the nearest sides so edges meet nodes naturally, while
- * directed diagrams keep explicit left-to-right handles.
+ * Nodes use a custom `algo` node type rather than React Flow's built-in
+ * default: the default node is styled with a fixed 150px width and top/bottom
+ * handles, which overlaps nodes spaced 140–150px apart and drags edges through
+ * the node bodies. The custom node hugs its label and exposes handles on all
+ * four sides; each edge picks the handle pair nearest to its endpoints, so
+ * left-to-right teaching graphs draw left-to-right edges and nothing routes
+ * through an unrelated vertex.
  */
 import { useMemo } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
+  Handle,
   MiniMap,
-  type Node,
-  type Edge,
   Position,
+  type Edge,
+  type Node,
+  type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { GraphData, GraphEdge, GraphNode } from "@shared/contract";
@@ -46,6 +52,78 @@ const EDGE_STYLES: Record<GraphEdge["state"], { stroke: string; dash?: string }>
   cut: { stroke: "#d97706" },
   uncut: { stroke: "#94a3b8", dash: "2 4" },
 };
+
+const SIDES = [Position.Left, Position.Right, Position.Top, Position.Bottom] as const;
+type Side = (typeof SIDES)[number];
+
+/** Handle ids: `s-`/`t-` prefix + side name, e.g. `s-right`, `t-left`. */
+const handleId = (kind: "s" | "t", side: Side) => `${kind}-${side}`;
+
+/**
+ * The teaching-graph node. Label-sized (never a fixed width), state colours
+ * inline-styled, and one target + one source handle per side so any edge can
+ * anchor on the side facing its neighbour. Handles are hidden: this graph is
+ * a display, not an editor, and visible handle dots only add noise.
+ */
+type AlgoFlowNode = Node<{ label: string; state: GraphNode["state"] }, "algo">;
+
+function AlgoNode({ data }: NodeProps<AlgoFlowNode>) {
+  const style = NODE_STYLES[data.state] ?? NODE_STYLES.default;
+  return (
+    <div
+      style={{
+        background: style.bg,
+        border: `2px solid ${style.border}`,
+        borderRadius: "8px",
+        padding: "6px 10px",
+        fontSize: "13px",
+        fontWeight: 600,
+        minWidth: "44px",
+        maxWidth: "168px",
+        textAlign: "center",
+        lineHeight: 1.3,
+      }}
+    >
+      {SIDES.map((side) => (
+        <Handle
+          key={handleId("t", side)}
+          id={handleId("t", side)}
+          type="target"
+          position={side}
+          isConnectable={false}
+          className="g7-handle"
+        />
+      ))}
+      {data.label}
+      {SIDES.map((side) => (
+        <Handle
+          key={handleId("s", side)}
+          id={handleId("s", side)}
+          type="source"
+          position={side}
+          isConnectable={false}
+          className="g7-handle"
+        />
+      ))}
+    </div>
+  );
+}
+
+const NODE_TYPES = { algo: AlgoNode };
+
+/**
+ * Which side of each node an edge should leave from and arrive on: the sides
+ * that face each other along the dominant axis between the two coordinates.
+ * Diagonal pairs prefer the horizontal axis, matching left-to-right layouts.
+ */
+function edgeSides(sx: number, sy: number, tx: number, ty: number): { source: Side; target: Side } {
+  const dx = tx - sx;
+  const dy = ty - sy;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? { source: Position.Right, target: Position.Left } : { source: Position.Left, target: Position.Right };
+  }
+  return dy >= 0 ? { source: Position.Bottom, target: Position.Top } : { source: Position.Top, target: Position.Bottom };
+}
 
 interface ValidatedGraph {
   nodes: GraphNode[];
@@ -119,52 +197,55 @@ export function validateGraphData(data?: Partial<GraphData> | null): ValidatedGr
 
 export function GraphBlock({ data, caption }: GraphBlockProps) {
   const { nodes: safeNodes, edges: safeEdges, droppedEdges } = useMemo(() => validateGraphData(data), [data]);
-  const directed = data.directed === true;
 
   const rfNodes: Node[] = useMemo(
     () =>
       safeNodes.map((n) => ({
         id: n.id,
+        type: "algo",
         position: { x: n.x, y: n.y },
-        data: { label: n.label },
-        ...(directed ? { sourcePosition: Position.Right, targetPosition: Position.Left } : {}),
-        style: {
-          background: NODE_STYLES[n.state]?.bg ?? NODE_STYLES.default.bg,
-          border: `2px solid ${NODE_STYLES[n.state]?.border ?? NODE_STYLES.default.border}`,
-          borderRadius: "8px",
-          padding: "6px 10px",
-          fontSize: "13px",
-          fontWeight: 600,
-          minWidth: "44px",
-          textAlign: "center" as const,
-        },
+        data: { label: n.label, state: n.state },
       })),
-    [safeNodes, directed],
+    [safeNodes],
   );
+
+  // Coordinates by id for handle-side selection (validated nodes are finite).
+  const positionOf = useMemo(() => {
+    const byId = new Map(safeNodes.map((n) => [n.id, n]));
+    return (id: string) => byId.get(id);
+  }, [safeNodes]);
 
   const rfEdges: Edge[] = useMemo(
     () =>
-      safeEdges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        type: (data.edgeType && data.edgeType !== "default" ? data.edgeType : "straight") as Edge["type"],
-        animated: e.state === "active" || e.state === "cut",
-        style: {
-          stroke: EDGE_STYLES[e.state]?.stroke ?? EDGE_STYLES.default.stroke,
-          strokeWidth: e.state === "active" || e.state === "cut" ? 3 : 2,
-        },
-        ...(e.caption
-          ? {
-              label: e.caption,
-              labelStyle: { fontSize: 11, fill: "#334155", fontWeight: 600 },
-              labelBgStyle: { fill: "#ffffff" },
-              labelBgPadding: [4, 2] as [number, number],
-              labelBgBorderRadius: 4,
-            }
-          : {}),
-      })),
-    [safeEdges, data.edgeType],
+      safeEdges.map((e) => {
+        const from = positionOf(e.source);
+        const to = positionOf(e.target);
+        const sides =
+          from && to ? edgeSides(from.x, from.y, to.x, to.y) : { source: Position.Right, target: Position.Left };
+        return {
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceHandle: handleId("s", sides.source),
+          targetHandle: handleId("t", sides.target),
+          type: (data.edgeType && data.edgeType !== "default" ? data.edgeType : "straight") as Edge["type"],
+          animated: e.state === "active" || e.state === "cut",
+          style: {
+            stroke: EDGE_STYLES[e.state]?.stroke ?? EDGE_STYLES.default.stroke,
+            strokeWidth: e.state === "active" || e.state === "cut" ? 3 : 2,
+          },
+          ...(e.caption
+            ? {
+                label: e.caption,
+                labelStyle: { fontSize: 11, fill: "#334155", fontWeight: 600 },
+                labelBgStyle: { fill: "#ffffff" },
+                labelBgPadding: [4, 2] as [number, number],
+                labelBgBorderRadius: 4,
+              }
+            : {}),
+        };
+      }),
+    [safeEdges, data.edgeType, positionOf],
   );
 
   const legend = useMemo(() => {
@@ -209,6 +290,7 @@ export function GraphBlock({ data, caption }: GraphBlockProps) {
         <ReactFlow
           nodes={rfNodes}
           edges={rfEdges}
+          nodeTypes={NODE_TYPES}
           fitView
           fitViewOptions={{ padding: 0.15 }}
           proOptions={{ hideAttribution: true }}

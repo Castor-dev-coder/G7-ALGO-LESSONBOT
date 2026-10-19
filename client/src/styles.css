@@ -695,6 +695,14 @@ body {
   overflow: hidden;
 }
 
+/* Edge-anchor handles on teaching-graph nodes. They exist only so React Flow
+   can anchor edges on the side facing the neighbour; as display elements they
+   must not show as editor dots. */
+.g7-handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .graph-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .legend-item {
   display: inline-flex;
@@ -1180,4 +1188,34 @@ body {
 .action-chip:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* ---------------------------------------------------------------------------
+ * Landing-page entry points inside the chat shell
+ * ------------------------------------------------------------------------- */
+
+/* The sidebar wordmark links back to the landing page. */
+.sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+.sidebar-brand:hover .brand-name {
+  text-decoration: underline;
+}
+
+/* Keep the drawer's close button at the end of the header row. */
+.sidebar-close {
+  margin-left: auto;
+}
+
+/* Home affordance in the mobile/compact header. */
+.header-home {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  text-decoration: none;
 }

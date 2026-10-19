@@ -73,9 +73,11 @@ describe("classifyProviderError — failure categories", () => {
     // A 429 with server retry guidance is a temporary per-minute limit.
     expect(classifyProviderError(rateLimitError({ retryAfter: "30" })).category).toBe("per-minute");
     expect(classifyProviderError(rateLimitError({ retryDelay: "42s" })).category).toBe("per-minute");
-    // A bare 429 with no quota period and no retry guidance is an
-    // entitlement/tier restriction.
-    expect(classifyProviderError(rateLimitError()).category).toBe("non-retryable");
+    // A bare 429 with no quota period and no retry guidance: from Gemini this
+    // is an entitlement/tier restriction (strict); from xKiro a bounded
+    // per-minute default applies.
+    expect(classifyProviderError(rateLimitError()).category).toBe("per-minute");
+    expect(classifyProviderError(rateLimitError(), "gemini").category).toBe("non-retryable");
     // Hard auth/permission/model failures are non-retryable restrictions.
     expect(classifyProviderError(rateLimitError({ status: 401 })).category).toBe("non-retryable");
     expect(classifyProviderError(rateLimitError({ status: 403 })).category).toBe("non-retryable");
@@ -100,7 +102,8 @@ describe("reasonForError — sanitized, category-aware reasons", () => {
       reasonForError(rateLimitError({ quotaSubject: "50000/day/service/generate_content_requests" })),
     ).toBe("AI daily quota exhausted");
     expect(reasonForError(rateLimitError({ retryAfter: "30" }))).toBe("AI rate limit reached");
-    expect(reasonForError(rateLimitError())).toBe("AI access is not available");
+    expect(reasonForError(rateLimitError())).toBe("AI rate limit reached");
+    expect(reasonForError(rateLimitError(), "gemini")).toBe("AI access is not available");
     expect(reasonForError(rateLimitError({ status: 401 }))).toBe("AI service rejected the credentials");
     expect(reasonForError(rateLimitError({ status: 403 }))).toBe("AI service denied access");
     expect(reasonForError(rateLimitError({ status: 404 }))).toBe("AI model is not available");
@@ -141,7 +144,9 @@ describe("cooldownMsForError — structured guidance precedence", () => {
     expect(cooldownMsForError(rateLimitError({ status: 401 }))).toBe(LONG_COOLDOWN_MS);
     expect(cooldownMsForError(rateLimitError({ status: 403 }))).toBe(LONG_COOLDOWN_MS);
     expect(cooldownMsForError(rateLimitError({ status: 404 }))).toBe(LONG_COOLDOWN_MS);
-    expect(cooldownMsForError(rateLimitError())).toBe(LONG_COOLDOWN_MS);
+    // Gemini strictness for a guidance-less 429; xKiro uses the bounded default.
+    expect(cooldownMsForError(rateLimitError(), "gemini")).toBe(LONG_COOLDOWN_MS);
+    expect(cooldownMsForError(rateLimitError())).toBe(DEFAULT_COOLDOWN_MS);
   });
 
   it("caps server-provided per-minute delays at the maximum", () => {

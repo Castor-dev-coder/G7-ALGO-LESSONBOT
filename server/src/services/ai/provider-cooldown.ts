@@ -48,6 +48,16 @@ export interface ProviderErrorClassification {
   quotaMetric?: string;
 }
 
+/**
+ * Cooldown classification is provider-aware where error semantics differ:
+ * Google almost always sends RetryInfo/QuotaFailure for 429s, so a guidance-
+ * less 429 from Gemini is treated as an entitlement/tier restriction (long
+ * cooldown). xKiro 429s routinely arrive with no guidance and are typically
+ * temporary per-minute limits, so a guidance-less 429 from xKiro (or an
+ * unknown provider) gets the bounded per-minute default instead.
+ */
+export type CooldownProviderKey = "gemini" | "xkiro";
+
 /** Bounded defaults (ms). */
 export const DEFAULT_COOLDOWN_MS = 30_000;
 /** Cap for server-provided per-minute retry delays. */
@@ -155,7 +165,10 @@ function extractQuotaMetric(err: unknown): string | undefined {
  * Returns "other" for transient errors (timeouts, connection errors) that
  * carry no rate-limit structure — those never record a cooldown.
  */
-export function classifyProviderError(err: unknown): ProviderErrorClassification {
+export function classifyProviderError(
+  err: unknown,
+  providerKey?: CooldownProviderKey,
+): ProviderErrorClassification {
   const status =
     typeof (err as { status?: unknown })?.status === "number" ? (err as { status: number }).status : undefined;
   const quotaMetric = extractQuotaMetric(err);
@@ -187,9 +200,13 @@ export function classifyProviderError(err: unknown): ProviderErrorClassification
   if (retryDelayMs !== undefined) {
     return { category: "per-minute", retryDelayMs };
   }
-  // A bare 429 with no quota period and no retry guidance is an
-  // entitlement/tier restriction — waiting cannot resolve it.
-  return { category: "non-retryable" };
+  // A guidance-less 429: Google treats it as an entitlement/tier restriction
+  // (long cooldown); xKiro 429s are routinely temporary per-minute limits, so
+  // they get the bounded per-minute default.
+  if (providerKey === "gemini") {
+    return { category: "non-retryable" };
+  }
+  return { category: "per-minute" };
 }
 
 /**
@@ -197,8 +214,8 @@ export function classifyProviderError(err: unknown): ProviderErrorClassification
  * the fallback diagnostic and the cooldown record. Never forwards raw error
  * text. Unknown or unspecified restrictions keep their generic label.
  */
-export function reasonForError(err: unknown): string {
-  const { category } = classifyProviderError(err);
+export function reasonForError(err: unknown, providerKey?: CooldownProviderKey): string {
+  const { category } = classifyProviderError(err, providerKey);
   if (category === "daily-quota") return "AI daily quota exhausted";
   if (category === "non-retryable") {
     if (!isProviderRateLimited(err)) {
@@ -232,8 +249,8 @@ export function reasonForError(err: unknown): string {
  *   - non-retryable: the long cooldown (one controlled probe per day).
  *   - other (transient): no cooldown is recorded by callers.
  */
-export function cooldownMsForError(err: unknown): number {
-  const { category, retryDelayMs } = classifyProviderError(err);
+export function cooldownMsForError(err: unknown, providerKey?: CooldownProviderKey): number {
+  const { category, retryDelayMs } = classifyProviderError(err, providerKey);
   switch (category) {
     case "per-minute":
       return Math.min(retryDelayMs ?? DEFAULT_COOLDOWN_MS, MAX_COOLDOWN_MS);
@@ -251,18 +268,18 @@ export function cooldownMsForError(err: unknown): number {
  * record so callers can include its structured fields in diagnostics.
  */
 export function recordProviderCooldown(
-  provider: string,
+  provider: CooldownProviderKey,
   err: unknown,
   now: number = Date.now(),
 ): ProviderCooldown {
-  const cooldownMs = cooldownMsForError(err);
+  const cooldownMs = cooldownMsForError(err, provider);
   const record: ProviderCooldown = {
     provider,
     until: now + cooldownMs,
-    reason: reasonForError(err),
+    reason: reasonForError(err, provider),
     retryDelayMs: cooldownMs,
   };
-  const { quotaMetric } = classifyProviderError(err);
+  const { quotaMetric } = classifyProviderError(err, provider);
   if (quotaMetric) record.quotaMetric = quotaMetric;
   cooldowns.set(provider, record);
   return record;

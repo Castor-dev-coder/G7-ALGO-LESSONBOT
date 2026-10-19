@@ -12,13 +12,14 @@
  *      fallback answers and the response mode honestly reports
  *      "curated_fallback".
  *
- * When the AI provider is enabled, each turn is ORCHESTRATED (see
+ * When an AI provider is enabled, each turn is ORCHESTRATED (see
  * orchestrator.ts): the model proposes a validated plan (intent, effective
  * topic, optional allowlisted tool), validated tool arguments run the
  * deterministic solvers, and only then does the model compose the explanation
- * around the verified result.
+ * around the verified result. Generative providers: xKiro (OpenAI-compatible,
+ * default when configured) and Gemini (compliance-gated).
  */
-import { config, isGeminiEnabled } from "../../config.js";
+import { config, isGeminiEnabled, isXKiroEnabled } from "../../config.js";
 import { CuratedFallbackProvider } from "./curated-fallback.js";
 import {
   clearProviderCooldown,
@@ -28,14 +29,46 @@ import {
   recordProviderCooldown,
   recordsCooldown,
 } from "./provider-cooldown.js";
-import type { SolverResult } from "../../../../shared/contract.js";
+import type { ChatBlock, SolverResult } from "../../../../shared/contract.js";
 import type { TutorContext, TutorProvider, TutorReply, TutorStreamHandlers, TutorUsage } from "./types.js";
 import { isTopicId, detectTopicId } from "./topic-detection.js";
+import type { TutorPlan } from "./orchestrator.js";
 
 export { clearProviderCooldown };
 
+/** The active generative provider, if any. xKiro takes precedence when both
+ * are configured; the Gemini audience-compliance gate stays Gemini-specific. */
+function activeAiProvider(): "gemini" | "xkiro" | null {
+  return isXKiroEnabled() ? "xkiro" : isGeminiEnabled() ? "gemini" : null;
+}
+
+/** Load the active provider's planner/composer entry points. */
+async function loadActiveAiProvider(key: "gemini" | "xkiro"): Promise<{
+  planWithRetry: (context: TutorContext, signal?: AbortSignal) => Promise<{ plan: TutorPlan; usage?: TutorUsage }>;
+  streamReply: (
+    context: TutorContext,
+    streaming?: TutorStreamHandlers,
+    orchestration?: { plan: TutorPlan; computation?: SolverResult; usedCuratedInput?: boolean },
+  ) => Promise<{ reply: { blocks: ChatBlock[]; mode: "ai"; topicId?: string }; usage?: TutorUsage }>;
+}> {
+  if (key === "gemini") {
+    const m = await import("./gemini-provider.js");
+    return { planWithRetry: m.planWithRetry, streamReply: m.streamGeminiReply };
+  }
+  const m = await import("./xkiro-provider.js");
+  return { planWithRetry: m.planWithRetry, streamReply: m.streamReply };
+}
+
 /** Backward-compatible alias for the provider factory. */
 export async function createProvider(): Promise<TutorProvider> {
+  if (isXKiroEnabled()) {
+    try {
+      const { XKiroTutorProvider } = await import("./xkiro-provider.js");
+      return new XKiroTutorProvider();
+    } catch {
+      return new CuratedFallbackProvider();
+    }
+  }
   if (isGeminiEnabled()) {
     try {
       const { GeminiTutorProvider } = await import("./gemini-provider.js");
@@ -53,9 +86,10 @@ export async function getProvider(): Promise<TutorProvider> {
 }
 
 export function providerStatus(): { provider: string; enabled: boolean } {
+  const active = activeAiProvider();
   return {
-    provider: isGeminiEnabled() ? "gemini" : config.ai.provider,
-    enabled: isGeminiEnabled(),
+    provider: active ?? config.ai.provider,
+    enabled: active !== null,
   };
 }
 
@@ -105,8 +139,8 @@ export interface StreamOutcome {
  * name, and HTTP status from the SDK are enough. Single source: the cooldown
  * module's reasonForError (kept as an alias for existing callers/tests).
  */
-export function sanitizeProviderError(err: unknown): string {
-  return reasonForError(err);
+export function sanitizeProviderError(err: unknown, providerKey?: "gemini" | "xkiro"): string {
+  return reasonForError(err, providerKey);
 }
 
 /**
@@ -127,18 +161,19 @@ export async function streamWithFallback(
     },
   };
 
-  if (isGeminiEnabled()) {
+  const aiProviderKey = activeAiProvider();
+  if (aiProviderKey) {
     // A confirmed rate limit was recorded for this provider: do not spend
     // another request on it until the cooldown expires. The curated fallback
     // answers and the response honestly reports the recorded restriction
     // (temporary rate limit, daily quota, or non-retryable access issue).
-    if (isProviderCoolingDown("gemini")) {
-      const cooldown = providerCooldown("gemini");
+    if (isProviderCoolingDown(aiProviderKey)) {
+      const cooldown = providerCooldown(aiProviderKey);
       const fallbackReason = cooldown?.reason ?? "AI rate limit reached";
       console.error(
         JSON.stringify({
           event: "ai_fallback_to_curated",
-          provider: "gemini",
+          provider: aiProviderKey,
           reason: fallbackReason,
           cooldownActive: true,
           cooldownRemainingMs: cooldown ? cooldown.until - Date.now() : null,
@@ -158,16 +193,15 @@ export async function streamWithFallback(
       };
     }
     try {
-      const gemini = await import("./gemini-provider.js");
-      const { planWithRetry, streamGeminiReply } = gemini;
+      const ai = await loadActiveAiProvider(aiProviderKey);
       const { executePlanTool } = await import("./orchestrator.js");
 
       // A. Conversation understanding: validated plan. Planning failure must
       // not kill the answer — degrade to a planless direct compose instead.
-      let planning: Awaited<ReturnType<typeof planWithRetry>> | undefined;
+      let planning: Awaited<ReturnType<typeof ai.planWithRetry>> | undefined;
       let planError: unknown;
       try {
-        planning = await withTimeout(planWithRetry(context, streaming?.signal));
+        planning = await withTimeout(ai.planWithRetry(context, streaming?.signal));
       } catch (err) {
         if (streaming?.signal?.aborted) throw err;
         planError = err;
@@ -203,7 +237,7 @@ export async function streamWithFallback(
           : context.computedTrace,
       };
       const result = await withTimeout(
-        streamGeminiReply(
+        ai.streamReply(
           planContext,
           wrapped,
           planning
@@ -225,21 +259,22 @@ export async function streamWithFallback(
         // here would duplicate or contradict it. Surface the real failure.
         throw err;
       }
-      // Gemini was enabled and attempted, but failed before any user-visible
-      // text. The curated fallback answers (the sidebar label alone is not
-      // honest about WHY), so log a sanitized diagnostic and carry the reason
-      // through to the SSE `done` event. No user message, no credentials.
+      // An AI provider was enabled and attempted, but failed before any
+      // user-visible text. The curated fallback answers (the sidebar label
+      // alone is not honest about WHY), so log a sanitized diagnostic and
+      // carry the reason through to the SSE `done` event. No user message,
+      // no credentials.
       if (recordsCooldown(err)) {
         // Record the cooldown BEFORE answering so the next turn cannot spend
         // another request on the limited provider.
-        recordProviderCooldown("gemini", err);
+        recordProviderCooldown(aiProviderKey, err);
       }
-      const fallbackReason = reasonForError(err);
-      const cooldown = providerCooldown("gemini");
+      const fallbackReason = reasonForError(err, aiProviderKey);
+      const cooldown = providerCooldown(aiProviderKey);
       console.error(
         JSON.stringify({
           event: "ai_fallback_to_curated",
-          provider: "gemini",
+          provider: aiProviderKey,
           reason: fallbackReason,
           errorName: err instanceof Error ? err.name : "UnknownError",
           status:

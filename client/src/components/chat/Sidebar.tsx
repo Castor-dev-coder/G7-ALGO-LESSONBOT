@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LearningLevel, TopicSummary } from "@shared/contract";
 import { LEARNING_LEVELS } from "@shared/contract";
 import type { ProviderStatus } from "../../App";
+import { Link } from "../../lib/router";
 import type { StoredConversation } from "../../lib/conversations";
 import { STORAGE_NOTICE } from "../../lib/conversations";
 
@@ -96,10 +97,12 @@ export function Sidebar({
       {open && <div className="drawer-scrim" onClick={onClose} aria-hidden="true" />}
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`} aria-label="Conversation navigation">
         <div className="sidebar-head">
-          <span className="brand-mark" aria-hidden="true">
-            λ
-          </span>
-          <span className="brand-name">AlgoTutor AI</span>
+          <Link to="/" className="sidebar-brand" aria-label="G7 Algo — back to the landing page">
+            <span className="brand-mark" aria-hidden="true">
+              λ
+            </span>
+            <span className="brand-name">G7 Algo</span>
+          </Link>
           <button
             ref={closeBtnRef}
             type="button"

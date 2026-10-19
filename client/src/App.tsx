@@ -56,6 +56,16 @@ export interface ProviderStatus {
   enabled: boolean;
 }
 
+export interface AppProps {
+  /**
+   * Seed question carried by the route (`/chat?ask=...`) from a landing-page
+   * topic action. Prefills the composer; it is never sent on the user's behalf.
+   */
+  prefill?: string | null;
+  /** Topic slug carried by the route (`/chat?topic=...`). Ignored if unknown. */
+  topicFromRoute?: string | null;
+}
+
 /**
  * Capability suggestions. Each one submits a REAL message; servers route it
  * from the message content itself — no topic pre-selection is implied.
@@ -99,7 +109,7 @@ function currentConversationId(): string {
   return newConversationId();
 }
 
-export default function App() {
+export default function App({ prefill = null, topicFromRoute = null }: AppProps = {}) {
   const [topics, setTopics] = useState<TopicSummary[]>([]);
   const [topicId, setTopicId] = useState<string>("polynomial-reductions");
   const [level, setLevel] = useState<LearningLevel>("beginner");
@@ -108,6 +118,8 @@ export default function App() {
   const [provider, setProvider] = useState<ProviderStatus>({ provider: "curated", enabled: false });
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  /** Seed question from a landing-page topic action, handed to the composer. */
+  const [draft, setDraft] = useState<string | null>(prefill);
 
   // Recent conversations (browser-local; no database).
   const [conversations, setConversations] = useState<StoredConversation[]>(() => loadConversations());
@@ -144,6 +156,22 @@ export default function App() {
       .then((r) => setProvider(r.ai))
       .catch(() => undefined);
   }, []);
+
+  // A topic slug carried by the route is applied only once the real catalog has
+  // loaded, and only when it names a topic that exists — an unknown slug would
+  // otherwise make every chat request fail with a 404.
+  useEffect(() => {
+    if (!topicFromRoute || topics.length === 0) return;
+    if (!topics.some((topic) => topic.slug === topicFromRoute)) return;
+    setTopicId(topicFromRoute);
+    conversationStateRef.current = { ...conversationStateRef.current, topicId: topicFromRoute };
+  }, [topicFromRoute, topics]);
+
+  // A seed question updates the composer draft. It is only ever a draft: the
+  // visitor presses Send themselves.
+  useEffect(() => {
+    if (prefill) setDraft(prefill);
+  }, [prefill]);
 
   // Persist the active conversation after each completed turn.
   const persistConversation = useCallback(
@@ -519,6 +547,7 @@ export default function App() {
           onSend={(text) => void send(text)}
           onStop={stop}
           streaming={Boolean(streamingId)}
+          draft={draft}
           placeholder="Ask anything — e.g. 'run a Max-Cut demo' or 'explain the formal proof'"
         />
       </div>

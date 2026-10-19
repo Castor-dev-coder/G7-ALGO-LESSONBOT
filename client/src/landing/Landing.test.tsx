@@ -1,0 +1,299 @@
+/**
+ * Landing page tests: every supported topic is rendered from the catalog (once
+ * each, nothing invented), every call to action has a real destination, topic
+ * actions carry their question into the chat, the mobile menu is accessible,
+ * and the demonstration shows real computed solver output.
+ */
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TOPIC_PROMPTS } from "@shared/landing-scenes";
+import { Landing } from "./Landing";
+
+const h = vi.hoisted(() => ({
+  topics: vi.fn(),
+  topic: vi.fn(),
+}));
+
+vi.mock("../api/client", () => ({
+  api: {
+    health: vi.fn(async () => ({ ai: { provider: "curated", enabled: false } })),
+    topics: h.topics,
+    topic: h.topic,
+    chat: vi.fn(),
+    solve: vi.fn(),
+    generateQuiz: vi.fn(),
+    gradeQuiz: vi.fn(),
+  },
+  streamChat: () => () => {},
+}));
+
+// The demonstration reuses the chat's trace block, which draws graphs with
+// React Flow. React Flow needs real layout measurement, so it is stubbed here;
+// the browser verification covers the real rendering.
+vi.mock("@xyflow/react", () => ({
+  ReactFlow: () => <div data-testid="react-flow" />,
+  Background: () => null,
+  Controls: () => null,
+  Handle: () => null,
+  MiniMap: () => null,
+  Position: { Left: "left", Right: "right", Top: "top", Bottom: "bottom" },
+}));
+
+/** Mirrors the real catalog (server/src/data/topics.ts). */
+const CATALOG = [
+  {
+    slug: "polynomial-reductions",
+    title: "Foundations of Polynomial Reductions",
+    description: "What it means to transform one problem into another, and why the transformation is the point.",
+  },
+  {
+    slug: "formal-reductions",
+    title: "Formal Polynomial-Time Reductions",
+    description: "The formal definition A ≤p B and how reductions establish NP-hardness.",
+  },
+  {
+    slug: "cook-levin",
+    title: "The Cook–Levin Theorem",
+    description: "Why SAT is NP-complete: encoding an accepting computation as a Boolean formula.",
+  },
+  {
+    slug: "approximation-algorithms",
+    title: "Approximation Algorithms",
+    description: "Optimization problems, approximation ratios, and the 2-approximation for Vertex Cover.",
+  },
+  {
+    slug: "randomized-algorithms",
+    title: "Randomized Algorithms",
+    description: "Randomized choices, expected running time, and a seeded randomized Max-Cut demo.",
+  },
+];
+
+function detailFor(slug: string) {
+  const topic = CATALOG.find((entry) => entry.slug === slug)!;
+  return {
+    topic: {
+      ...topic,
+      readinessQuestions: [`A readiness question about ${topic.title}?`],
+      visualization: { kind: "graph", description: `A diagram of ${topic.title}.` },
+    },
+  };
+}
+
+beforeEach(() => {
+  h.topics.mockReset();
+  h.topic.mockReset();
+  h.topics.mockResolvedValue({ topics: CATALOG });
+  h.topic.mockImplementation(async (slug: string) => detailFor(slug));
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("landing — topic catalog", () => {
+  it("renders every supported topic exactly once", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.querySelectorAll(".lp-topic-card")).toHaveLength(CATALOG.length));
+
+    const cards = [...document.querySelectorAll(".lp-topic-card")];
+    const titles = cards.map((card) => card.querySelector(".lp-topic-title")!.textContent);
+    expect(titles).toEqual(CATALOG.map((topic) => topic.title));
+    // No duplicates.
+    expect(new Set(titles).size).toBe(CATALOG.length);
+  });
+
+  it("shows the catalog's own description, question and diagram caption", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.querySelectorAll(".lp-topic-card")).toHaveLength(CATALOG.length));
+
+    const cookLevin = [...document.querySelectorAll(".lp-topic-card")].find((card) =>
+      card.textContent!.includes("The Cook–Levin Theorem"),
+    )!;
+    expect(cookLevin.textContent).toContain("Why SAT is NP-complete");
+    expect(cookLevin.textContent).toContain("A readiness question about The Cook–Levin Theorem?");
+    expect(cookLevin.textContent).toContain("A diagram of The Cook–Levin Theorem.");
+  });
+
+  it("features a strict subset near the hero, never a new topic", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.querySelectorAll(".lp-chip").length).toBeGreaterThan(0));
+
+    const chips = [...document.querySelectorAll(".lp-chip")];
+    expect(chips.length).toBeLessThan(CATALOG.length);
+    const catalogTitles = CATALOG.map((topic) => topic.title);
+    for (const chip of chips) {
+      expect(catalogTitles).toContain(chip.textContent);
+    }
+  });
+
+  it("reports an honest, actionable state when the catalog cannot be loaded", async () => {
+    h.topics.mockRejectedValue(new Error("network_error"));
+    render(<Landing />);
+
+    await waitFor(() => expect(screen.getByText(/could not be loaded/)).toBeTruthy());
+    expect(document.querySelectorAll(".lp-topic-card")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open the chat" }).getAttribute("href")).toBe("/chat");
+
+    // Retrying with a working catalog renders the topics.
+    h.topics.mockResolvedValue({ topics: CATALOG });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(document.querySelectorAll(".lp-topic-card")).toHaveLength(CATALOG.length));
+  });
+});
+
+describe("landing — calls to action", () => {
+  it("points every primary action at the chat application", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.querySelectorAll(".lp-topic-card").length).toBeGreaterThan(0));
+
+    const primary = screen.getAllByRole("link", { name: "Try the Chat" });
+    expect(primary.length).toBeGreaterThanOrEqual(3); // nav, hero, closing
+    for (const link of primary) {
+      expect(link.getAttribute("href")).toBe("/chat");
+    }
+  });
+
+  it("points every secondary action at the topics section, which exists", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.querySelectorAll(".lp-topic-card").length).toBeGreaterThan(0));
+
+    const secondary = screen.getAllByRole("link", { name: "Explore the Topics" });
+    expect(secondary.length).toBeGreaterThanOrEqual(2); // hero, closing
+    for (const link of secondary) {
+      expect(link.getAttribute("href")).toBe("#topics");
+    }
+    expect(document.getElementById("topics")).toBeTruthy();
+  });
+
+  it("gives every in-page navigation link a section that exists", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.querySelectorAll(".lp-topic-card").length).toBeGreaterThan(0));
+
+    const anchors = [...document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')];
+    expect(anchors.length).toBeGreaterThan(0);
+    for (const anchor of anchors) {
+      const id = anchor.getAttribute("href")!.slice(1);
+      expect(document.getElementById(id), `#${id} must exist`).toBeTruthy();
+    }
+  });
+
+  it("carries each topic's question and topic into the chat", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.querySelectorAll(".lp-topic-card")).toHaveLength(CATALOG.length));
+
+    for (const topic of CATALOG) {
+      const card = [...document.querySelectorAll<HTMLElement>(".lp-topic-card")].find((entry) =>
+        entry.textContent!.includes(topic.title),
+      )!;
+      const action = within(card).getByRole("link", { name: "Ask about this" });
+      const href = action.getAttribute("href")!;
+      expect(href.startsWith("/chat?")).toBe(true);
+      const query = new URLSearchParams(href.slice(href.indexOf("?") + 1));
+      expect(query.get("topic")).toBe(topic.slug);
+      expect(query.get("ask")).toBe(TOPIC_PROMPTS[topic.slug]);
+    }
+  });
+
+  it("keeps the footer links real and the identity present", async () => {
+    render(<Landing />);
+    const footer = document.querySelector(".lp-footer")!;
+    expect(within(footer as HTMLElement).getByText("G7 Algo")).toBeTruthy();
+    for (const link of [...footer.querySelectorAll("a")]) {
+      const href = link.getAttribute("href")!;
+      if (href.startsWith("#")) {
+        expect(document.getElementById(href.slice(1))).toBeTruthy();
+      } else {
+        // The brand points home, the chat link points at the chat.
+        expect(["/", "/chat"]).toContain(href);
+      }
+    }
+    // No fabricated social proof or contact details anywhere on the page.
+    expect(document.body.textContent).not.toMatch(/trusted by|testimonial|@gmail|@example\.com/i);
+  });
+});
+
+describe("landing — mobile navigation", () => {
+  it("opens and closes with correct ARIA state and Escape", () => {
+    render(<Landing />);
+    const toggle = screen.getByRole("button", { name: "Open navigation menu" });
+    const drawer = document.getElementById("lp-nav-drawer")!;
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(drawer.getAttribute("aria-hidden")).toBe("true");
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(drawer.getAttribute("aria-hidden")).toBe("false");
+    // Focus moves into the drawer.
+    expect(document.activeElement).toBe(within(drawer).getByRole("button", { name: "Close menu" }));
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(drawer.getAttribute("aria-hidden")).toBe("true");
+    // Focus returns to the trigger.
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it("closes on the scrim and on a navigation choice", () => {
+    render(<Landing />);
+    const toggle = screen.getByRole("button", { name: "Open navigation menu" });
+
+    fireEvent.click(toggle);
+    fireEvent.click(document.querySelector(".lp-scrim")!);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(toggle);
+    const drawer = document.getElementById("lp-nav-drawer")!;
+    fireEvent.click(within(drawer).getByRole("link", { name: "How it works" }));
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
+describe("landing — interactive demonstration", () => {
+  it("shows real computed solver output, not a mock-up", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(screen.getByText("Vertex Cover 2-approximation")).toBeTruthy());
+
+    const frame = document.querySelector<HTMLElement>(".lp-demo-frame")!;
+    // The chat's own trace block: computed result, guarantee, complexity.
+    const result = frame.querySelector(".trace-result-value")!;
+    expect(result.textContent).toContain("coverSize=4");
+    expect(result.textContent).toContain("matchingSize=2");
+    expect(frame.querySelector(".trace-guarantee")!.textContent).toContain("2·OPT");
+    expect(frame.querySelector(".trace-complexity")!.textContent).toContain("space O(n + m)");
+  });
+
+  it("steps the demonstration through the solver's own trace", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(screen.getByText("Vertex Cover 2-approximation")).toBeTruthy());
+
+    const frame = document.querySelector<HTMLElement>(".lp-demo-frame")!;
+    expect(within(frame).getByText("Step 1 of 4")).toBeTruthy();
+    fireEvent.click(within(frame).getByRole("button", { name: "Next step" }));
+    expect(within(frame).getByText("Step 2 of 4")).toBeTruthy();
+    // The graph, the explanation and the metrics all describe the same step.
+    expect(frame.querySelector(".trace-step-title")!.textContent).toBe("Pick uncovered edge A–B");
+    expect(frame.querySelector(".trace-step-desc")!.textContent).toMatch(/Add A and B to the cover/);
+    expect(frame.querySelector(".trace-result-value")!.textContent).toContain("coverSize=4");
+    fireEvent.click(within(frame).getByRole("button", { name: "Reset to first step" }));
+    expect(within(frame).getByText("Step 1 of 4")).toBeTruthy();
+  });
+
+  it("switches to the second demonstration", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(screen.getByText("Vertex Cover 2-approximation")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("tab", { name: "Independent Set → Vertex Cover" }));
+    const frame = document.querySelector<HTMLElement>(".lp-demo-frame")!;
+    expect(frame.querySelector(".trace-result-value")!.textContent).toContain("transformation=f(G, k) = (G, n − k)");
+  });
+
+  it("has exactly one h1 and a labelled landmark structure", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.querySelectorAll(".lp-topic-card").length).toBeGreaterThan(0));
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(screen.getByRole("main")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Skip to content" })).toBeTruthy();
+  });
+});

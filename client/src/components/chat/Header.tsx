@@ -4,6 +4,7 @@
  */
 import type { LearningLevel, TopicSummary } from "@shared/contract";
 import type { ProviderStatus } from "../../App";
+import { Link } from "../../lib/router";
 
 interface HeaderProps {
   topics: TopicSummary[];
@@ -20,6 +21,9 @@ export function Header({ topics, topicId, level, provider, onOpenDrawer, streami
   const topic = topics.find((t) => t.slug === topicId);
   return (
     <header className="header">
+      <Link to="/" className="btn btn-icon header-home" aria-label="G7 Algo — back to the landing page">
+        <span aria-hidden="true">λ</span>
+      </Link>
       <button
         type="button"
         className="btn btn-icon header-menu"
@@ -34,7 +38,7 @@ export function Header({ topics, topicId, level, provider, onOpenDrawer, streami
         </span>
       </button>
       <div className="header-context">
-        <span className="header-topic">{conversationTitle ?? (topic ? topic.title : "AlgoTutor AI")}</span>
+        <span className="header-topic">{conversationTitle ?? (topic ? topic.title : "G7 Algo")}</span>
         <span className="header-meta">
           <span
             className={`provider-badge ${provider.enabled ? "provider-ai" : "provider-curated"}`}

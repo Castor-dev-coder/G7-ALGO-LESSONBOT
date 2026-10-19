@@ -6,7 +6,7 @@
  * |C| = 2·|M| ≤ 2·OPT. Deterministic: edges are chosen in sorted order.
  */
 import type { SolverResult, TraceStep } from "../../../../shared/contract.js";
-import { LIMITS, RawGraph, toGraphData, validateGraph, edgeId, ValidationError } from "./graph-utils.js";
+import { LIMITS, RawGraph, suggestLayout, toGraphData, validateGraph, edgeId, ValidationError } from "./graph-utils.js";
 
 export interface VertexCoverInput {
   vertices: string[];
@@ -16,6 +16,7 @@ export interface VertexCoverInput {
 export function solveVertexCover(input: unknown): SolverResult {
   const parsed = input as VertexCoverInput;
   const raw: RawGraph = validateGraph(parsed?.vertices, parsed?.edges);
+  const layout = suggestLayout(raw);
 
   // Deterministic edge order: sorted by (source, target).
   const sortedEdges = [...raw.edges].sort(([a1, b1], [a2, b2]) =>
@@ -38,7 +39,7 @@ export function solveVertexCover(input: unknown): SolverResult {
         }
         return coveredEdges.has(id) ? "covered" : "uncovered";
       },
-      "linear",
+      layout,
       "straight",
     );
 
@@ -117,6 +118,7 @@ export function solveVertexCover(input: unknown): SolverResult {
       raw,
       (v) => (inCover.has(v) ? "selected" : "default"),
       (a, b) => "covered",
+      layout,
     ),
     table: {
       columns: [

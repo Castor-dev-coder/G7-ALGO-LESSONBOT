@@ -2,7 +2,18 @@
  * Server entry point.
  */
 import { createApp } from "./app.js";
-import { config } from "./config.js";
+import { config, isXKiroEnabled } from "./config.js";
+
+// Safe startup diagnostic: a configured-but-unusable AI provider is reported
+// without revealing any secret values.
+if (config.ai.provider === "xkiro" && !isXKiroEnabled()) {
+  const missing: string[] = [];
+  if (!config.ai.xkiroApiKey) missing.push("XKIRO_API_KEY");
+  if (!config.ai.xkiroModel) missing.push("XKIRO_MODEL");
+  console.warn(
+    `[startup] AI provider "xkiro" selected but not enabled — missing: ${missing.join(", ")}. Using the curated offline provider.`,
+  );
+}
 
 const app = createApp();
 
