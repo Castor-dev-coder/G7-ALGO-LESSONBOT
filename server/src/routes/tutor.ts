@@ -261,8 +261,15 @@ tutorRouter.post("/api/tutor/chat/stream", rateLimiter(config.ai.rateLimit.windo
           }
         }
       } else {
+        // The prose already reached the student as deltas. Anything the
+        // provider returned that is NOT that prose — a guardrail correction
+        // block appended after screening — is still new information and has
+        // to be delivered.
         for (const block of outcome.reply.blocks) {
           if (block.type === "quiz") storeQuiz(block.quiz);
+          if (block.type !== "text") {
+            sendEvent("block", { index: blockIndex++, block });
+          }
         }
       }
 
@@ -305,6 +312,9 @@ function isTraceLeadText(
 function friendlyStreamError(err: unknown): string {
   if (err instanceof Error) {
     if (err.name === "AbortError") return "Generation was stopped.";
+    if (err.name === "BlockedContentError" || err.message.includes("blocked content")) {
+      return "The AI response was rejected by a safety check before it reached you. Please try again.";
+    }
     if (err.message.includes("timed out")) return "The AI request timed out. Please try again.";
     if (
       err.message.includes("provider failed") &&

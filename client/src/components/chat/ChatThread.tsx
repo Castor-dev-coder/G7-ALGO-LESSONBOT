@@ -9,11 +9,21 @@
  * (e.g. "another example" once every curated example for the topic has been
  * shown), which the brief requires instead of repeating the same content.
  */
-import { useState } from "react";
+import { useState, type ReactElement } from "react";
 import type { Message } from "../../App";
 import { BlockRenderer } from "../blocks/BlockRenderer";
 import { TextBlock } from "../blocks/TextBlock";
 import { TUTOR_ACTIONS } from "@shared/contract";
+import {
+  IconCheck,
+  IconCompare,
+  IconCopy,
+  IconLayers,
+  IconLightbulb,
+  IconProof,
+  IconQuiz,
+  IconRestart,
+} from "../icons";
 
 interface ChatThreadProps {
   messages: Message[];
@@ -30,6 +40,19 @@ const ACTION_ORDER: (keyof typeof TUTOR_ACTIONS)[] = [
   "compare",
   "quiz",
 ];
+
+/**
+ * One icon per follow-up action, drawn in the app's shared icon family so the
+ * action row reads as one set. Always `aria-hidden`: the chip's text label is
+ * the accessible name.
+ */
+const ACTION_ICONS: Record<string, (props: { size?: number }) => ReactElement> = {
+  explain_simpler: IconLightbulb,
+  formal_proof: IconProof,
+  another_example: IconLayers,
+  compare: IconCompare,
+  quiz: IconQuiz,
+};
 
 function ModeLabel({ mode }: { mode: Message["mode"] }) {
   if (!mode) return null;
@@ -68,15 +91,33 @@ function AssistantActions({
   );
   return (
     <div className="response-actions" role="group" aria-label="Response actions">
-      <button type="button" className="chip action-chip" onClick={() => void copy()} disabled={disabled}>
+      {/* Copy/Regenerate are always relevant, so they are always present; the
+          server-declared actions appear only when the producer says it can
+          honour them, and are disabled while a request is already running. */}
+      <button
+        type="button"
+        className={`chip action-chip ${copied ? "action-chip-done" : ""}`}
+        onClick={() => void copy()}
+        disabled={disabled}
+        title={copied ? "Copied to the clipboard" : "Copy this response"}
+      >
+        {copied ? <IconCheck size={15} /> : <IconCopy size={15} />}
         {copied ? "Copied" : "Copy"}
       </button>
-      <button type="button" className="chip action-chip" onClick={onRegenerate} disabled={disabled}>
+      <button
+        type="button"
+        className="chip action-chip"
+        onClick={onRegenerate}
+        disabled={disabled}
+        title="Ask again with the same question and context"
+      >
+        <IconRestart size={15} />
         Regenerate
       </button>
       {available.map((id) => {
         const def = TUTOR_ACTIONS[id];
         if (!def) return null;
+        const Icon = ACTION_ICONS[id];
         return (
           <button
             key={id}
@@ -84,7 +125,9 @@ function AssistantActions({
             className="chip action-chip"
             disabled={disabled}
             onClick={() => onAction(def.prompt)}
+            title={def.prompt}
           >
+            {Icon ? <Icon size={15} /> : null}
             {def.label}
           </button>
         );
@@ -125,7 +168,8 @@ function AssistantMessage({
         {m.error ? (
           <div className="message-error" role="alert">
             <p>{m.error}</p>
-            <button type="button" className="chip action-chip" onClick={onRegenerate}>
+            <button type="button" className="chip action-chip" onClick={onRegenerate} title="Send this question again">
+              <IconRestart size={15} />
               Retry
             </button>
           </div>

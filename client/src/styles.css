@@ -5,24 +5,37 @@
 
 :root {
   --bg: #ffffff;
-  --bg-soft: #f7f7f8;
+  --bg-soft: #f4f5f8;
   --surface: #ffffff;
-  --border: #e5e7eb;
-  --border-soft: #eceef1;
-  --text: #1a1d23;
-  --text-muted: #6b7280;
+  --border: #e3e5ea;
+  --border-soft: #eceef2;
+  --text: #171a20;
+  --text-muted: #667085;
   --accent: #4f46e5;
   --accent-hover: #4338ca;
   --accent-soft: #eef2ff;
-  --success: #16a34a;
+  --accent-line: #c7d2fe;
+  --success: #15803d;
   --warning: #b45309;
   --error: #dc2626;
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
-  --shadow-lift: 0 8px 30px rgba(16, 24, 40, 0.12);
+  --radius-lg: 14px;
+
+  /* Layered elevation. Each surface picks the two or three layers it needs;
+     nothing gets a shadow just for having one. `1` is a contact shadow,
+     `2` adds ambient spread, `3` is for overlays, and the inset pair draws
+     the top-edge highlight and the sunken well of a containing surface. */
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-2: 0 1px 2px rgba(16, 24, 40, 0.05), 0 2px 6px -1px rgba(16, 24, 40, 0.07);
+  --shadow-3: 0 2px 4px rgba(16, 24, 40, 0.05), 0 12px 28px -8px rgba(16, 24, 40, 0.14);
+  --shadow-overlay: 0 4px 8px -2px rgba(16, 24, 40, 0.08), 0 24px 56px -12px rgba(16, 24, 40, 0.24);
+  --shadow: var(--shadow-2);
+  --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --well: inset 0 1px 2px rgba(16, 24, 40, 0.05), inset 0 0 0 1px rgba(16, 24, 40, 0.02);
+  --focus-ring: 0 0 0 3px rgba(79, 70, 229, 0.22);
   --content-max: 46rem;
-  --sidebar-w: 264px;
+  --sidebar-w: 272px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -66,11 +79,13 @@ body {
 }
 
 .main {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  background: var(--bg);
 }
 
 /* ---------- Sidebar ---------- */
@@ -130,6 +145,15 @@ body {
   color: var(--text-muted);
   margin: 6px 0 4px;
 }
+.sidebar-label-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sidebar-label-with-icon svg {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
 
 .sidebar-topics {
   flex: 1;
@@ -165,10 +189,11 @@ body {
 
 .segmented {
   display: flex;
-  background: #ececf1;
-  border-radius: 9px;
+  background: #e9eaef;
+  border-radius: 10px;
   padding: 3px;
   gap: 2px;
+  box-shadow: var(--well);
 }
 
 .segment {
@@ -176,18 +201,20 @@ body {
   border: 0;
   background: transparent;
   padding: 6px 4px;
-  border-radius: 7px;
+  border-radius: 8px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-muted);
   cursor: pointer;
   min-height: 36px;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 .segment:hover { color: var(--text); }
+.segment:active { background: rgba(16, 24, 40, 0.06); }
 .segment-active {
   background: var(--surface);
   color: var(--accent);
-  box-shadow: var(--shadow);
+  box-shadow: var(--highlight), var(--shadow-1);
 }
 
 .sidebar-footer {
@@ -205,15 +232,16 @@ body {
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  padding: 3px 10px;
+  padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-muted);
   white-space: nowrap;
+  box-shadow: var(--shadow-1);
 }
 .provider-ai {
-  border-color: #c7d2fe;
+  border-color: var(--accent-line);
   color: var(--accent);
   background: var(--accent-soft);
 }
@@ -227,6 +255,9 @@ body {
 .provider-ai .provider-dot { background: var(--accent); }
 
 .linklike {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   border: 0;
   background: transparent;
   color: var(--text-muted);
@@ -234,8 +265,10 @@ body {
   cursor: pointer;
   padding: 6px;
   min-height: 36px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
-.linklike:hover { color: var(--text); text-decoration: underline; }
+.linklike:hover { color: var(--text); background: rgba(16, 24, 40, 0.05); }
 
 .drawer-scrim {
   display: none;
@@ -254,8 +287,12 @@ body {
   padding: 6px 8px;
   border-bottom: 1px solid var(--border-soft);
   background: var(--surface);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0));
+  box-shadow: 0 1px 0 rgba(16, 24, 40, 0.02), 0 6px 16px -14px rgba(16, 24, 40, 0.35);
   flex-shrink: 0;
   min-height: 52px;
+  position: relative;
+  z-index: 10;
 }
 
 .btn-icon {
@@ -265,27 +302,16 @@ body {
   width: 40px;
   height: 40px;
   padding: 0;
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
   border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--text);
   font-size: 15px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
-.btn-icon:hover { background: var(--bg-soft); }
-
-.menu-icon {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.menu-icon span {
-  display: block;
-  width: 18px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--text);
-}
+.btn-icon:hover { background: var(--bg-soft); border-color: var(--border-soft); }
+.btn-icon:active { background: #e8e9ee; }
 
 .header-context {
   display: flex;
@@ -333,8 +359,19 @@ body {
 
 /* ---------- Thread ---------- */
 
-.thread {
+/* Positioned wrapper so the "Latest" control can sit at the foot of the
+   reading area without being inside the scrolling box (where it would scroll
+   away) or over the composer (where it would cover the input). */
+.thread-wrap {
+  position: relative;
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.thread {
+  flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-behavior: auto;
@@ -344,9 +381,38 @@ body {
 .thread-inner {
   max-width: var(--content-max);
   margin: 0 auto;
-  padding: 20px 16px 28px;
+  padding: 22px 16px 28px;
   display: flex;
   flex-direction: column;
+}
+
+/* Offered only when the reader has scrolled away from the newest content. */
+.jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: var(--highlight), var(--shadow-3);
+  z-index: 5;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.jump-latest:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  box-shadow: var(--highlight), var(--shadow-overlay);
 }
 
 /* ---------- Welcome / empty state ---------- */
@@ -354,15 +420,17 @@ body {
 .welcome {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   margin: auto 0;
-  max-width: 620px;
+  max-width: 640px;
 }
 
 .welcome-icon {
-  width: 48px;
-  height: 48px;
-  font-size: 24px;
+  width: 46px;
+  height: 46px;
+  font-size: 23px;
+  border-radius: var(--radius);
+  box-shadow: var(--highlight), 0 2px 6px -1px rgba(79, 70, 229, 0.4);
 }
 
 .welcome-title {
@@ -376,7 +444,8 @@ body {
   color: var(--text-muted);
   font-size: 15px;
   margin: 0;
-  max-width: 52ch;
+  max-width: 56ch;
+  line-height: 1.65;
 }
 
 /* ---------- Messages ---------- */
@@ -384,7 +453,7 @@ body {
 .chat-thread {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 24px;
 }
 
 .message {
@@ -397,15 +466,17 @@ body {
 }
 
 .message-pill {
-  background: var(--accent-soft);
+  background: linear-gradient(180deg, #f4f6ff 0%, var(--accent-soft) 100%);
   color: var(--text);
-  border-radius: 18px;
-  border: 1px solid #dfe3f8;
+  border-radius: 16px 16px 4px 16px;
+  border: 1px solid #dde2fa;
   padding: 9px 15px;
   max-width: 85%;
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 15px;
+  line-height: 1.55;
+  box-shadow: var(--highlight), var(--shadow-1);
 }
 
 .message-assistant {
@@ -420,13 +491,14 @@ body {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  background: var(--accent);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, #6155ea 0%, var(--accent) 100%);
   color: #fff;
   font-size: 14px;
   font-weight: 700;
   flex-shrink: 0;
   margin-top: 2px;
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.4);
 }
 
 .message-content {
@@ -434,7 +506,7 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .message-streamed { min-width: 0; }
@@ -476,7 +548,7 @@ body {
 }
 .message-error p { margin: 0 0 8px; }
 
-.message-foot { display: flex; }
+.message-foot { display: flex; gap: 8px; align-items: center; }
 
 .mode-badge {
   display: inline-flex;
@@ -489,23 +561,35 @@ body {
   color: var(--text-muted);
   background: var(--surface);
 }
-.mode-ai { border-color: #c7d2fe; color: var(--accent); background: var(--accent-soft); }
+.mode-ai { border-color: var(--accent-line); color: var(--accent); background: var(--accent-soft); }
 .mode-curated { color: var(--success); border-color: #bbf7d0; background: #f0fdf4; }
 
+/* Response actions sit *after* the content they act on, visually quieter than
+   it: smaller type, no fill until hovered, but a real focus ring. */
 .response-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  padding-top: 2px;
 }
 
 .action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12.5px;
+  font-weight: 500;
   padding: 5px 12px;
-  min-height: 32px;
+  min-height: 38px;
   color: var(--text-muted);
   border-radius: 999px;
+  background: var(--surface);
+  box-shadow: none;
 }
-.action-chip:hover { background: var(--bg-soft); color: var(--text); }
+.action-chip svg { flex-shrink: 0; }
+.action-chip:hover { background: var(--bg-soft); color: var(--text); border-color: var(--border); }
+.action-chip:active:not(:disabled) { background: #e8e9ee; }
+.action-chip-done { color: var(--success); border-color: #bbf7d0; background: #f0fdf4; }
 
 /* ---------- Buttons ---------- */
 
@@ -519,49 +603,106 @@ body {
   border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease,
+    transform 0.1s ease, opacity 0.15s ease;
   min-height: 40px;
 }
+.btn svg { flex-shrink: 0; }
+/* A press is a 0.5px settle: enough to read as pressed, not enough to move
+   neighbouring text. */
+.btn:active:not(:disabled) { transform: translateY(0.5px); }
+.btn:disabled { cursor: not-allowed; }
 
 .btn:focus-visible,
 .chip:focus-visible,
 .segment:focus-visible,
 .sidebar-topic:focus-visible,
 .linklike:focus-visible,
-.btn-icon:focus-visible {
+.btn-icon:focus-visible,
+.starter-chip:focus-visible,
+.recents-open:focus-visible,
+.jump-latest:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: linear-gradient(180deg, #5b52e9 0%, var(--accent) 62%);
   color: #fff;
+  box-shadow: var(--highlight), 0 1px 2px rgba(79, 70, 229, 0.35), 0 2px 8px -3px rgba(79, 70, 229, 0.45);
 }
-.btn-primary:hover { background: var(--accent-hover); }
-.btn-primary:disabled { background: #c7d2fe; cursor: not-allowed; }
+.btn-primary:hover { background: linear-gradient(180deg, #544ae6 0%, var(--accent-hover) 62%); }
+.btn-primary:active { background: var(--accent-hover); box-shadow: 0 1px 2px rgba(79, 70, 229, 0.4); }
+.btn-primary:disabled {
+  background: var(--accent-line);
+  box-shadow: none;
+  opacity: 0.7;
+}
 
 .btn-stop {
   background: var(--text);
   color: #fff;
+  box-shadow: var(--highlight), var(--shadow-2);
 }
-.btn-stop:hover { background: #333; }
+.btn-stop:hover { background: #2a2f39; }
 
-.stop-square {
-  width: 12px;
-  height: 12px;
-  background: #fff;
-  border-radius: 2px;
-}
-
+/* The send/stop button's label sits beside a glyph-sized icon: on a narrow
+   phone only the icon fits, from 640px the word returns. */
 .send-label { display: none; }
 
 /* ---------- Starter chips ---------- */
 
 .starter-chips {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
+  margin-top: 2px;
+}
+@media (min-width: 560px) {
+  .starter-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.starter-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: var(--radius);
+  text-align: left;
+  min-height: 62px;
+  background: var(--surface);
+  box-shadow: var(--highlight), var(--shadow-1);
+}
+.starter-chip:hover {
+  border-color: var(--accent-line);
+  background: var(--surface);
+  box-shadow: var(--highlight), var(--shadow-2);
+}
+.starter-chip:active:not(:disabled) { background: var(--bg-soft); }
+.starter-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.starter-chip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.starter-chip-label { font-weight: 600; }
+.starter-chip-hint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
 }
 
 .chip {
@@ -570,19 +711,22 @@ body {
   border-radius: 999px;
   background: var(--surface);
   font-size: 14px;
+  font-family: inherit;
   cursor: pointer;
   color: var(--text);
   min-height: 42px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease, transform 0.1s ease;
 }
-.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip:hover { border-color: var(--accent-line); color: var(--accent); box-shadow: var(--shadow-1); }
+.chip:active:not(:disabled) { transform: translateY(0.5px); }
 
 /* ---------- Blocks ---------- */
 
 .blocks {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .block { min-width: 0; }
@@ -594,41 +738,73 @@ body {
   margin: 0 0 6px;
 }
 
-.text-block { word-break: break-word; overflow-wrap: anywhere; }
-.text-block p { margin: 0 0 10px; }
+/* Prose inside a message: a readable measure, generous leading, and a
+   hierarchy that survives being read top to bottom. Math, code, tables and
+   graphs render inside the same column, so they stay visually attached to
+   the message that introduced them. */
+.text-block {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+.text-block p { margin: 0 0 12px; }
 .text-block p:last-child { margin-bottom: 0; }
 .text-block h1, .text-block h2, .text-block h3, .text-block h4 {
-  margin: 14px 0 6px;
+  margin: 18px 0 8px;
   line-height: 1.3;
   letter-spacing: -0.01em;
+  color: var(--text);
 }
 .text-block h1:first-child,
 .text-block h2:first-child,
 .text-block h3:first-child { margin-top: 0; }
 .text-block h1 { font-size: 19px; }
-.text-block h2 { font-size: 17px; }
+.text-block h2 {
+  font-size: 17px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-soft);
+}
 .text-block h3 { font-size: 15.5px; }
-.text-block h4 { font-size: 15px; }
-.text-block ul, .text-block ol { margin: 4px 0 10px; padding-left: 22px; }
-.text-block ul ul { margin-bottom: 0; }
+.text-block h4 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.text-block ul, .text-block ol { margin: 4px 0 12px; padding-left: 22px; }
+.text-block li { margin-bottom: 5px; }
+.text-block li:last-child { margin-bottom: 0; }
+.text-block ul ul, .text-block ol ol,
+.text-block ul ol, .text-block ol ul { margin: 5px 0 0; }
+.text-block li::marker { color: var(--text-muted); }
+.text-block a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.text-block a:hover { color: var(--accent-hover); }
 .text-block code {
   background: var(--bg-soft);
   border: 1px solid var(--border-soft);
   border-radius: 4px;
   padding: 1px 5px;
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: 0.88em;
+  overflow-wrap: anywhere;
 }
 .text-block pre {
-  background: #0f1117;
-  color: #e6e8ee;
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
+  background: #12141c;
+  color: #e7e9ef;
+  border-radius: 10px;
+  padding: 13px 15px;
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.55;
-  margin: 8px 0;
+  margin: 10px 0;
+  border: 1px solid #22263a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), var(--shadow-2);
 }
 .text-block pre code {
   background: transparent;
@@ -638,13 +814,39 @@ body {
   white-space: pre;
 }
 .text-block blockquote {
-  border-left: 3px solid var(--border);
-  margin: 8px 0;
-  padding-left: 12px;
+  border-left: 3px solid var(--accent-line);
+  margin: 10px 0;
+  padding: 2px 0 2px 14px;
   color: var(--text-muted);
 }
-.text-block table { border-collapse: collapse; width: 100%; }
-.text-block td, .text-block th { border: 1px solid var(--border); padding: 5px 8px; font-size: 13.5px; }
+.text-block blockquote p:last-child { margin-bottom: 0; }
+/* Markdown tables scroll inside the message (TextBlock wraps them in
+   .table-scroll); without that, a wide table would push the page sideways. */
+.text-block .table-scroll {
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--well);
+}
+.text-block .table-scroll table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.text-block td, .text-block th {
+  border-bottom: 1px solid var(--border-soft);
+  padding: 7px 10px;
+  font-size: 13.5px;
+  text-align: left;
+  white-space: nowrap;
+}
+.text-block .table-scroll tr:last-child td { border-bottom: 0; }
+.text-block th {
+  background: var(--bg-soft);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
 
 .math-block { overflow-x: auto; padding: 4px 0; }
 .math-display { text-align: center; padding: 10px 0; }
@@ -665,7 +867,15 @@ body {
 
 /* ---------- Table ---------- */
 
-.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--well);
+}
+.table-block { display: block; }
 .table-block table {
   width: 100%;
   border-collapse: collapse;
@@ -673,26 +883,41 @@ body {
 }
 .table-block th, .table-block td {
   text-align: left;
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--border-soft);
   white-space: normal;
 }
+.table-block tbody tr:last-child td { border-bottom: 0; }
 .table-block th {
   background: var(--bg-soft);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12.5px;
+  color: var(--text-muted);
   white-space: nowrap;
+}
+.table-block caption,
+.table-caption {
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  padding: 8px 11px 0;
 }
 
 /* ---------- Graph ---------- */
 
+/* A framed canvas, not a hole in the page: rule, radius, a top-edge highlight
+   and a shallow well, so the drawing reads as an object placed on the
+   message. The height is fixed per breakpoint, so nothing inside can resize
+   the conversation. */
 .graph-viewport {
   width: 100%;
   height: 300px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: #fcfcfd;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 56px);
   overflow: hidden;
+  box-shadow: var(--highlight), var(--well), var(--shadow-1);
 }
 
 /* Edge-anchor handles on teaching-graph nodes. They exist only so React Flow
@@ -739,10 +964,11 @@ body {
 /* ---------- Trace ---------- */
 
 .trace-block {
-  background: var(--bg-soft);
-  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px;
+  box-shadow: var(--highlight), var(--shadow-1);
 }
 .trace-header {
   display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;
@@ -751,27 +977,59 @@ body {
 .trace-algo-id {
   font-size: 12px;
   color: var(--text-muted);
-  background: var(--surface);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
   border-radius: 4px;
   padding: 1px 6px;
+  font-family: var(--font-mono);
 }
 .trace-result {
-  background: var(--surface);
+  background: #f7fdf9;
   border: 1px solid #bbf7d0;
   border-radius: var(--radius-sm);
   padding: 8px 12px;
   margin-bottom: 8px;
   font-size: 14px;
 }
+/* `word-break: break-all` alone does not break Chrome's refusal to split a
+   long punctuated token (`{"A":"B",…}` pushed the whole thread sideways by
+   15px at 320px); `overflow-wrap: anywhere` does, so the value wraps inside
+   the message instead of making the page scroll. */
 .trace-result-label { font-weight: 700; margin-right: 6px; }
-.trace-result-value { word-break: break-all; font-family: var(--font-mono); font-size: 12.5px; }
+.trace-result-value {
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
 .trace-guarantee { font-size: 14px; margin: 4px 0; }
 .trace-complexity { font-size: 13px; color: var(--text-muted); margin: 4px 0; }
 .trace-warning { font-size: 13px; color: var(--warning); margin: 4px 0; }
 
 .trace-controls {
-  display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
 }
+/* Compact but still a real target: the step buttons are the only controls on a
+   trace, and they have to be pressable with a thumb. */
+.btn-small {
+  font-size: 13px;
+  padding: 6px 11px;
+  min-height: 38px;
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: var(--shadow-1);
+}
+.btn-small:hover { border-color: var(--accent-line); color: var(--accent); }
+.btn-small:disabled { opacity: 0.45; box-shadow: none; }
 .trace-step-indicator {
   font-size: 13px; font-weight: 600; color: var(--text-muted);
   white-space: nowrap; min-width: 86px; text-align: center;
@@ -787,10 +1045,11 @@ body {
 /* ---------- Quiz ---------- */
 
 .quiz-block {
-  background: var(--bg-soft);
-  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px;
+  box-shadow: var(--highlight), var(--shadow-1);
 }
 .quiz-title { font-weight: 700; font-size: 15px; margin: 0 0 10px; }
 .quiz-questions { padding-left: 0; list-style: none; margin: 0 0 12px; }
@@ -865,11 +1124,16 @@ body {
 
 /* ---------- Composer ---------- */
 
+/* The composer is part of the conversation surface, not a form bolted to the
+   bottom of the window: it shares the conversation's reading width, and a
+   soft top shadow (rather than a hard rule alone) separates it from the
+   scrolling content without cutting it off. */
 .composer {
   flex-shrink: 0;
   background: var(--bg);
   border-top: 1px solid var(--border-soft);
   padding: 10px 12px calc(10px + var(--safe-bottom));
+  box-shadow: 0 -1px 0 rgba(16, 24, 40, 0.02), 0 -10px 24px -20px rgba(16, 24, 40, 0.5);
 }
 
 .composer-inner {
@@ -883,11 +1147,15 @@ body {
   align-items: flex-end;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 26px;
+  border-radius: 24px;
   padding: 6px 6px 6px 16px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--highlight), var(--shadow-2);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.composer-row:focus-within { border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+.composer-row:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--highlight), var(--shadow-2), var(--focus-ring);
+}
 
 .composer-input {
   flex: 1;
@@ -904,11 +1172,12 @@ body {
   color: var(--text);
   min-width: 0;
 }
+.composer-input::placeholder { color: #98a0ad; }
 
 .composer-send {
-  min-height: 40px;
-  min-width: 40px;
-  padding: 8px 10px;
+  min-height: 42px;
+  min-width: 42px;
+  padding: 8px 12px;
   border-radius: 999px;
   flex-shrink: 0;
 }
@@ -941,7 +1210,7 @@ body {
   width: 100%;
   max-height: 80dvh;
   overflow-y: auto;
-  box-shadow: var(--shadow-lift);
+  box-shadow: var(--shadow-overlay);
 }
 .modal h2 { margin: 0 0 12px; font-size: 18px; }
 .modal-body ul { padding-left: 20px; margin: 0 0 16px; }
@@ -964,6 +1233,9 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .spinner { animation: none; }
   .streaming-dot { animation: none; opacity: 1; }
+  .drawer-scrim { animation: none; }
+  /* No transitions and no scroll easing; the landing page drops its own keyframe
+     animations in its own stylesheet. */
   * { transition: none !important; scroll-behavior: auto !important; }
 }
 
@@ -996,16 +1268,42 @@ body {
     bottom: 0;
     z-index: 50;
     transform: translateX(-105%);
-    transition: transform 0.22s ease-out;
+    /* Off-canvas is not enough: without hiding it the closed drawer's links
+       and buttons stay in the tab order, so keyboard users can focus
+       invisible controls. `visibility: hidden` removes it from the a11y tree
+       and the tab order; the delay keeps it visible for the slide-out. */
+    visibility: hidden;
+    transition: transform 0.22s ease-out, visibility 0s linear 0.22s;
     box-shadow: none;
     width: min(300px, 86vw);
   }
   .sidebar-open {
     transform: translateX(0);
-    box-shadow: var(--shadow-lift);
+    visibility: visible;
+    transition: transform 0.22s ease-out, visibility 0s linear 0s;
+    box-shadow: var(--shadow-overlay);
   }
-  .drawer-scrim { display: block; }
+  .drawer-scrim {
+    display: block;
+    /* The scrim animates in; under reduced motion the keyframes below are
+       dropped along with everything else. */
+    animation: scrim-in 0.18s ease-out;
+  }
+  @keyframes scrim-in { from { opacity: 0; } to { opacity: 1; } }
   .thread { padding: 0; }
+  /* Secondary actions become the primary touch targets here. */
+  .action-chip { min-height: 44px; }
+  .btn-icon-mini { min-height: 44px; min-width: 44px; }
+  .btn-small { min-height: 44px; }
+  .jump-latest { min-height: 44px; }
+  /* Everything that is the only way to do something gets a full thumb-sized
+     target: the header controls, New chat, the composer's send button and the
+     privacy link. */
+  .btn-icon { width: 44px; height: 44px; }
+  .sidebar-newchat { min-height: 44px; }
+  .composer-send { min-height: 44px; min-width: 44px; }
+  .linklike { min-height: 44px; padding-inline: 10px; }
+  .recents-open { min-height: 44px; }
 }
 
 /* =====================================================================
@@ -1064,8 +1362,37 @@ body {
   align-items: center;
   gap: 4px;
   border-radius: var(--radius-sm);
+  position: relative;
 }
-.recents-item-active { background: var(--accent-soft); }
+/* The current conversation is marked three ways — a filled row, an accent
+   rail on the leading edge, and `aria-current` — so it is unmistakable even
+   at a glance, and it is announced as such rather than only being coloured. */
+.recents-item-active {
+  background: var(--surface);
+  box-shadow: inset 2px 0 0 var(--accent), inset 0 0 0 1px var(--border-soft),
+    var(--shadow-1);
+}
+.recents-item-active .recents-title { color: var(--accent); }
+
+/* Delete confirmation, rendered in the row the click landed in. Browser-local
+   storage has no undo, so the destructive action is never one click away. */
+.recents-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 6px 6px 10px;
+}
+.recents-confirm-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .recents-open {
   flex: 1;
@@ -1081,7 +1408,8 @@ body {
   cursor: pointer;
   text-align: left;
 }
-.recents-open:hover { background: #ececf1; }
+.recents-open:hover { background: var(--bg-soft); }
+.recents-open:active { background: #e8e9ee; }
 
 .recents-title {
   font-size: 13.5px;
@@ -1102,6 +1430,7 @@ body {
   display: flex;
   gap: 2px;
   padding-right: 4px;
+  flex-shrink: 0;
 }
 
 .btn-icon-mini {
@@ -1109,22 +1438,41 @@ body {
   background: transparent;
   font-size: 12px;
   line-height: 1;
-  padding: 6px;
+  padding: 7px;
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-muted);
-  min-height: 32px;
-  min-width: 32px;
+  min-height: 38px;
+  min-width: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
-.btn-icon-mini:hover { background: #e5e7eb; color: var(--text); }
+.btn-icon-mini:hover { background: var(--border-soft); color: var(--text); }
+.btn-icon-mini:active { background: var(--border); }
 .btn-icon-mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn-icon-mini-danger:hover { background: #fef2f2; color: var(--error); }
+.btn-icon-mini-danger:active { background: #fee2e2; }
 
+.recents-rename {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  padding-right: 4px;
+}
 .recents-rename input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
+  font-family: inherit;
   padding: 6px 8px;
   border: 1px solid var(--accent);
   border-radius: 6px;
+  box-shadow: var(--focus-ring);
+  outline: 0;
 }
 
 .sidebar-empty,
@@ -1218,4 +1566,463 @@ body {
   font-family: Georgia, "Times New Roman", serif;
   font-weight: 700;
   text-decoration: none;
+}
+
+/* ===========================================================================
+   Assessment UI ("qa-" prefix).
+
+   Namespaced deliberately: the chat's inline practice-quiz block already owns
+   .quiz-question, .quiz-choice, .quiz-score and friends, and reusing those
+   names here would let a rule written for one surface silently restyle the
+   other. Two quiz UIs, two vocabularies.
+
+   Breakpoints exercised: 320 / 360 / 390 / 768 / 1024 / 1440.
+   =========================================================================== */
+
+/* Secondary button: same geometry as .btn, quieter than .btn-primary. Used for
+   "Create quiz", "Back to chat", and the print actions, where the button must
+   read as available without competing with the primary action beside it. */
+.btn-secondary {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+.btn-secondary:hover { background: var(--bg-soft); border-color: var(--border-soft); }
+.btn-secondary:active { background: #e8e9ee; }
+.btn-secondary:disabled { opacity: 0.55; box-shadow: none; }
+
+/* --- Sidebar entry point -------------------------------------------------- */
+
+.sidebar-quiz { width: 100%; margin-bottom: 14px; }
+
+/* --- Setup dialog --------------------------------------------------------- */
+
+.qa-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(16, 24, 40, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
+
+.qa-dialog {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  width: min(680px, 100%);
+  padding: 22px;
+  margin: auto;
+}
+
+.qa-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.qa-dialog-title { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+.qa-dialog-sub { font-size: 13.5px; color: var(--text-muted); margin: 0; }
+
+.qa-field { border: 0; padding: 0; margin: 0 0 18px; }
+.qa-legend {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.qa-counts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.qa-count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  min-height: 60px;
+  justify-content: center;
+}
+.qa-count:hover { background: var(--bg-soft); }
+.qa-count-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.qa-count-num { font-size: 20px; font-weight: 800; color: var(--text); line-height: 1; }
+.qa-count-active .qa-count-num { color: var(--accent); }
+.qa-count-hint { font-size: 10.5px; color: var(--text-muted); text-align: center; line-height: 1.2; }
+
+.qa-scope { display: flex; flex-direction: column; gap: 6px; }
+
+.qa-scope-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.qa-scope-option:hover { background: var(--bg-soft); }
+.qa-scope-option input { accent-color: var(--accent); margin-top: 2px; flex-shrink: 0; }
+.qa-scope-active { border-color: var(--accent); background: var(--accent-soft); }
+.qa-scope-title { display: block; font-size: 13.5px; font-weight: 600; }
+.qa-scope-hint {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.35;
+  margin-top: 1px;
+}
+
+.qa-field-row { display: flex; gap: 16px; margin-bottom: 18px; }
+.qa-field-half { flex: 1; margin-bottom: 0; min-width: 0; }
+.qa-segmented { display: flex; flex-wrap: wrap; gap: 2px; background: #e9eaef; border-radius: 10px; padding: 3px; }
+
+.qa-error {
+  color: var(--error);
+  font-size: 13.5px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  margin: 0 0 14px;
+}
+
+.qa-dialog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
+}
+.qa-estimate { font-size: 12.5px; color: var(--text-muted); margin: 0; }
+.qa-dialog-actions { display: flex; gap: 8px; }
+
+/* --- Runner shell --------------------------------------------------------- */
+
+.qa-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-soft);
+}
+
+.qa-view-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.qa-view-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qa-view-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 14px 32px;
+}
+
+.qa-panel {
+  max-width: 780px;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  padding: 22px;
+}
+.qa-panel-title { font-size: 21px; font-weight: 700; margin: 0 0 16px; }
+.qa-panel-title:focus-visible, .qa-question-prompt:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.qa-subhead { font-size: 14px; font-weight: 700; margin: 0 0 8px; }
+
+/* --- Overview ------------------------------------------------------------- */
+
+.qa-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 12px;
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+}
+.qa-facts dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.qa-facts dd { margin: 2px 0 0; font-size: 15px; font-weight: 600; }
+
+.qa-coverage { margin-bottom: 16px; }
+.qa-coverage-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.qa-coverage-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13.5px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+.qa-coverage-title { font-weight: 600; }
+.qa-coverage-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.qa-notes {
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  margin: 0 0 16px;
+}
+
+.qa-instructions { margin-bottom: 18px; }
+.qa-instructions ul { margin: 0; padding-left: 18px; font-size: 13.5px; color: var(--text-muted); }
+.qa-instructions li { margin-bottom: 4px; }
+
+.qa-source { font-size: 12px; font-weight: 600; }
+.qa-source-ai { color: var(--success); }
+.qa-source-curated { color: var(--accent); }
+.qa-source-mixed { color: var(--warning); }
+
+/* --- Attempt: progress ---------------------------------------------------- */
+
+.qa-progress-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.qa-progress-label { font-size: 14px; font-weight: 700; margin: 0 0 6px; }
+.qa-progress-answered { font-size: 12.5px; color: var(--text-muted); margin: 0 0 6px; }
+
+.qa-progress {
+  height: 6px;
+  background: var(--border-soft);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.qa-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+.qa-navigator {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.qa-nav-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.qa-nav-dot:hover { background: var(--bg-soft); }
+.qa-nav-answered { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.qa-nav-current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--text); }
+
+/* --- Attempt: question ---------------------------------------------------- */
+
+.qa-question-meta { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.qa-topic-tag, .qa-difficulty-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.qa-difficulty-tag { background: var(--bg-soft); color: var(--text-muted); }
+
+.qa-question-prompt { font-size: 17px; font-weight: 650; line-height: 1.45; margin: 0 0 14px; }
+
+.qa-choices { border: 0; padding: 0; margin: 0 0 14px; display: flex; flex-direction: column; gap: 7px; }
+.qa-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  background: var(--surface);
+}
+.qa-choice:hover { background: var(--bg-soft); }
+.qa-choice input { accent-color: var(--accent); margin-top: 2px; flex-shrink: 0; }
+.qa-choice-active { border-color: var(--accent); background: var(--accent-soft); }
+.qa-choice-letter { font-weight: 700; color: var(--text-muted); }
+.qa-choice-text { font-size: 14px; line-height: 1.4; }
+
+.qa-numerical { margin-bottom: 14px; }
+.qa-numerical-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+.qa-numerical-input {
+  width: min(220px, 100%);
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 14px;
+}
+.qa-numerical-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.qa-hint { margin-bottom: 14px; }
+.qa-hint-text {
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  margin: 8px 0 0;
+}
+
+.qa-question-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
+  flex-wrap: wrap;
+}
+
+.qa-unanswered-note {
+  font-size: 13px;
+  color: var(--warning);
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  margin: 12px 0 0;
+}
+
+.qa-confirm {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-top: 12px;
+}
+.qa-confirm p { margin: 0 0 10px; font-size: 13.5px; font-weight: 600; }
+.qa-confirm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* --- Results -------------------------------------------------------------- */
+
+.qa-score { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.qa-score-value { font-size: 34px; font-weight: 800; color: var(--accent); line-height: 1; }
+.qa-score-detail { font-size: 14px; color: var(--text-muted); }
+
+.qa-score-breakdown { list-style: none; padding: 0; margin: 0 0 18px; display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.qa-score-breakdown li { display: flex; align-items: center; gap: 5px; }
+.qa-break-correct { color: var(--success); font-weight: 600; }
+.qa-break-incorrect { color: var(--error); font-weight: 600; }
+.qa-break-unanswered { color: var(--text-muted); font-weight: 600; }
+
+.qa-topic-results { margin-bottom: 18px; }
+
+.qa-review { margin-bottom: 18px; }
+.qa-review-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.qa-review-item { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 11px 13px; }
+.qa-review-item.qa-review-correct { border-left: 3px solid var(--success); }
+.qa-review-item.qa-review-wrong { border-left: 3px solid var(--error); }
+
+.qa-review-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 5px; }
+.qa-review-num { font-weight: 700; }
+.qa-review-status { font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+.qa-review-status.qa-review-correct { background: #f0fdf4; color: var(--success); }
+.qa-review-status.qa-review-wrong { background: #fef2f2; color: var(--error); }
+
+.qa-review-prompt { font-size: 14px; font-weight: 600; margin: 0 0 8px; line-height: 1.4; }
+.qa-review-answers { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 0 0 8px; }
+.qa-review-answers dt { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.qa-review-answers dd { margin: 2px 0 0; font-size: 13.5px; }
+.qa-review-explanation { font-size: 13px; color: var(--text-muted); margin: 0; line-height: 1.45; }
+
+.qa-results-actions { display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border-soft); padding-top: 14px; }
+.qa-print-note { font-size: 12px; color: var(--text-muted); margin: 10px 0 0; line-height: 1.45; }
+
+/* --- Responsive ----------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .qa-counts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .qa-field-row { flex-direction: column; gap: 16px; }
+  .qa-dialog { padding: 16px; }
+  .qa-panel { padding: 16px; }
+  .qa-view-head { padding: 8px 10px; }
+  .qa-view-title { display: none; }
+  .qa-nav-dot { width: 28px; height: 28px; font-size: 11.5px; }
+  .qa-score-value { font-size: 28px; }
+  .qa-question-foot { gap: 8px; }
+  .qa-question-foot .btn { flex: 1; }
+}
+
+@media (max-width: 380px) {
+  .qa-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qa-dialog-actions { width: 100%; }
+  .qa-dialog-actions .btn { flex: 1; }
+  .qa-results-actions .btn { width: 100%; }
+}
+
+/* Welcome-screen entry point to the quiz. Sits below the starter chips so it
+   reads as a different kind of action: the chips ask a question, this one
+   builds a test. */
+.welcome-quiz {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+.welcome-quiz-hint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 44ch;
+  text-align: center;
+  line-height: 1.45;
 }

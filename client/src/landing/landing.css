@@ -94,6 +94,19 @@
   outline-offset: 2px;
 }
 
+/* Section targets take focus after an in-page navigation so keyboard and
+   screen-reader users arrive at the content they asked for rather than staying
+   on the nav link. Ringing the whole section would draw a box around a
+   1200px-wide block, so the indicator sits on its heading instead. */
+.lp-section[tabindex="-1"]:focus {
+  outline: none;
+}
+.lp-section[tabindex="-1"]:focus-visible .lp-section-head {
+  outline: 2px solid var(--lp-focus);
+  outline-offset: 6px;
+  border-radius: 4px;
+}
+
 /* ------------------------------------------------------------------ buttons */
 
 .lp-btn {
@@ -1416,9 +1429,20 @@
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   border-top: 1px solid var(--lp-line);
 }
-/* Anchor navigation eases into place while the landing page is mounted;
-   reduced motion already forces `auto` back via the global override. */
-html:has(> #root > .lp) {
+/* The skip link targets <main>, whose document top is exactly the sticky
+   nav's height. Without an offset, activating it scrolls main's first 65px
+   *under* the nav; with one, the jump resolves to the top of the document,
+   where the nav and the hero already clear each other. */
+#lp-main {
+  scroll-margin-top: 76px;
+}
+
+/* Anchor navigation eases into place while the landing page is mounted.
+   The selector walks the real document shape (html > body > #root > .lp) — an
+   earlier `html:has(> #root > .lp)` never matched, so section links jumped
+   instantly. It is scoped to the landing page so route navigation (/chat) is
+   never affected, and `:has()` failing outright degrades to the native jump. */
+html:has(> body > #root > .lp) {
   scroll-behavior: smooth;
 }
 
@@ -1852,6 +1876,12 @@ html:has(> #root > .lp) {
 /* ------------------------------------------------------------ reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
+  /* Section links jump immediately instead of easing. Declared here as well as
+     in the global override so the landing page does not depend on another
+     stylesheet for its reduced-motion behaviour. */
+  html:has(> body > #root > .lp) {
+    scroll-behavior: auto;
+  }
   .lp-signal,
   .lp-mapping-track,
   .lp-bg-edge,

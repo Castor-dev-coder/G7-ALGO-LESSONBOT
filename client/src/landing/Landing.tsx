@@ -77,6 +77,15 @@ function useTopicCatalog() {
 
 /**
  * Which of the nav's sections is currently in view, for `aria-current` state.
+ *
+ * The observation band is a thin slice of the viewport, but a fast scroll can
+ * still report two sections at once — taking whichever entry arrived last made
+ * the highlight bounce across the boundary. Every intersecting section is
+ * therefore tracked and the topmost one (the one nearest the top of the band)
+ * wins, so exactly one item is ever current. The previous choice is kept when
+ * nothing at all intersects (the gap between sections), rather than flickering
+ * to nothing for a frame.
+ *
  * Guarded twice: no IntersectionObserver (older webviews, jsdom) means no
  * active state at all, which is the browser default anyway.
  */
@@ -91,11 +100,23 @@ function useActiveSection(): string | null {
       .filter((el): el is HTMLElement => el !== null);
     if (sections.length === 0) return;
 
+    const visible = new Set<string>();
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) setActive(entry.target.id);
+          if (entry.isIntersecting) visible.add(entry.target.id);
+          else visible.delete(entry.target.id);
         }
+        if (visible.size === 0) return;
+
+        let current: HTMLElement | null = null;
+        for (const section of sections) {
+          if (visible.has(section.id)) {
+            current = section;
+            break; // `sections` is document order, so the first is topmost.
+          }
+        }
+        if (current) setActive(current.id);
       },
       { rootMargin: "-30% 0px -55% 0px", threshold: 0 },
     );
@@ -157,6 +178,14 @@ function Brand({ onActivate }: { onActivate?: () => void }) {
       onClick={(event) => {
         event.preventDefault();
         onActivate?.();
+        // Same-page "back to top": drop the fragment first, otherwise the URL
+        // keeps claiming a section the page is no longer showing. replaceState
+        // (rather than a second navigation) keeps Back/Forward honest. The
+        // scroll behavior stays `auto`, which CSS resolves to smooth here and
+        // to an immediate jump under prefers-reduced-motion.
+        if (window.location.hash) {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        }
         window.scrollTo({ top: 0, behavior: "auto" });
       }}
     >
@@ -455,7 +484,12 @@ function TopicGrid({
   onRetry: () => void;
 }) {
   return (
-    <section className="lp-section lp-topics" id={SECTION_IDS.topics} aria-labelledby="lp-topics-title">
+    <section
+      className="lp-section lp-topics"
+      id={SECTION_IDS.topics}
+      aria-labelledby="lp-topics-title"
+      tabIndex={-1}
+    >
       <div className="lp-section-head">
         <h2 id="lp-topics-title">Every supported topic</h2>
         <p>
@@ -510,7 +544,12 @@ function TopicGrid({
 /** Section F — the learning loop, and who computes what. */
 function HowItWorks() {
   return (
-    <section className="lp-section lp-how" id={SECTION_IDS.how} aria-labelledby="lp-how-title">
+    <section
+      className="lp-section lp-how"
+      id={SECTION_IDS.how}
+      aria-labelledby="lp-how-title"
+      tabIndex={-1}
+    >
       <div className="lp-section-head">
         <h2 id="lp-how-title">How a session works</h2>
         <p>Four stages, in the order they actually happen.</p>
@@ -546,7 +585,12 @@ function HowItWorks() {
 /** "What it does" — real capabilities, read off the repository. */
 function About() {
   return (
-    <section className="lp-section lp-about" id={SECTION_IDS.about} aria-labelledby="lp-about-title">
+    <section
+      className="lp-section lp-about"
+      id={SECTION_IDS.about}
+      aria-labelledby="lp-about-title"
+      tabIndex={-1}
+    >
       <div className="lp-section-head">
         <h2 id="lp-about-title">What it does</h2>
         <p>Capabilities that exist in the app today — nothing here is on a roadmap.</p>

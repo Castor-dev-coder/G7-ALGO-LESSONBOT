@@ -120,7 +120,7 @@ describe("routing", () => {
     // The existing composer and sidebar are mounted, unmodified.
     expect(screen.getByLabelText("Message input")).toBeTruthy();
     expect(screen.getByLabelText("Send message")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "+ New chat" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeTruthy();
     expect(screen.getByRole("complementary", { name: "Conversation navigation" })).toBeTruthy();
     // Still using the same API client for the catalog.
     await waitFor(() => expect(h.topics).toHaveBeenCalled());
@@ -167,7 +167,7 @@ describe("topic actions into the chat", () => {
     render(<Root />);
     const input = screen.getByLabelText("Message input") as HTMLTextAreaElement;
     expect(input.value).toBe("");
-    expect(screen.getByRole("button", { name: "+ New chat" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeTruthy();
   });
 
   it("ignores a topic slug that is not in the catalog", async () => {

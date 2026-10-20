@@ -4,6 +4,8 @@
  * actions carry their question into the chat, the mobile menu is accessible,
  * and the demonstration shows real computed solver output.
  */
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TOPIC_PROMPTS } from "@shared/landing-scenes";
@@ -295,5 +297,112 @@ describe("landing — interactive demonstration", () => {
     expect(document.querySelectorAll("h1")).toHaveLength(1);
     expect(screen.getByRole("main")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Skip to content" })).toBeTruthy();
+  });
+});
+
+/**
+ * The landing stylesheet, read from disk. `?raw` is not usable here (Vitest
+ * stubs CSS imports to an empty string) and jsdom's global `URL` is rejected
+ * by `fs`, so the path is resolved from the working directory instead — the
+ * suite is only ever run from the client package, with a repo-root fallback.
+ */
+function readLandingCss(): string {
+  const candidates = [
+    resolve(process.cwd(), "src/landing/landing.css"),
+    resolve(process.cwd(), "client/src/landing/landing.css"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      // Comments stripped, so an assertion can only ever be satisfied (or
+      // broken) by a real declaration rather than by the prose explaining it.
+      return readFileSync(candidate, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    }
+  }
+  throw new Error(`landing.css not found; tried:\n  ${candidates.join("\n  ")}`);
+}
+
+describe("landing — smooth section navigation", () => {
+  const css = readLandingCss();
+
+  it("smooth-scrolls the document shape the app actually renders", async () => {
+    // The selector is only meaningful against the real nesting. `#root` is a
+    // child of <body>, so `html:has(> #root > .lp)` could never match and every
+    // section link jumped instead of scrolling — the guard is both "the rule
+    // exists" and "the rule's shape is the one the DOM has".
+    const previous = document.getElementById("root");
+    previous?.remove();
+    const root = document.createElement("div");
+    root.id = "root";
+    root.innerHTML = '<div class="lp"></div>';
+    document.body.appendChild(root);
+    try {
+      expect(document.body.contains(document.getElementById("root"))).toBe(true);
+      expect(document.documentElement.matches("html:has(> body > #root > .lp)")).toBe(true);
+      expect(css).toMatch(/html:has\(> body > #root > \.lp\)\s*\{\s*scroll-behavior:\s*smooth/);
+      // The never-matching form must not come back.
+      expect(css).not.toMatch(/html:has\(> #root/);
+    } finally {
+      root.remove();
+      if (previous) document.body.appendChild(previous);
+    }
+  });
+
+  it("drops back to an immediate jump under prefers-reduced-motion", () => {
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toMatch(/html:has\(> body > #root > \.lp\)\s*\{\s*scroll-behavior:\s*auto/);
+    // And the landing page cannot depend on the chat shell's global override.
+    expect(reduced).toMatch(/scroll-behavior:\s*auto/);
+  });
+
+  it("offsets every anchor target so headings clear the sticky nav", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.querySelectorAll("a[href^='#']").length).toBeGreaterThan(0));
+
+    // Every fragment link resolves to a real element.
+    for (const anchor of [...document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')]) {
+      const target = document.getElementById(anchor.hash.slice(1));
+      expect(target, anchor.getAttribute("href") ?? undefined).toBeTruthy();
+    }
+
+    // ...and the stylesheet gives those targets a scroll margin.
+    expect(css).toMatch(/\.lp-section\s*\{[^}]*scroll-margin-top:/);
+    expect(css).toMatch(/#lp-main\s*\{\s*scroll-margin-top:/);
+  });
+
+  it("makes each section link destination focusable for keyboard users", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.getElementById("how-it-works")).toBeTruthy());
+
+    for (const id of ["topics", "how-it-works", "about"]) {
+      const section = document.getElementById(id)!;
+      expect(section.tagName).toBe("SECTION");
+      expect(section.getAttribute("tabindex")).toBe("-1");
+    }
+    // The skip link's target too.
+    expect(document.getElementById("lp-main")!.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("keeps section links as plain anchors so route navigation stays separate", async () => {
+    render(<Landing />);
+    await waitFor(() => expect(document.getElementById("how-it-works")).toBeTruthy());
+
+    // In-page links are real fragment hrefs (native handling: hash, history,
+    // focus), never upgraded into route navigation. The nav and the drawer
+    // both carry the same three links.
+    const banner = screen.getByRole("banner") as HTMLElement;
+    const drawer = document.getElementById("lp-nav-drawer")!;
+    for (const name of ["Topics", "How it works", "What it does"]) {
+      const links = [
+        ...within(banner).getAllByRole("link", { name }),
+        ...within(drawer).getAllByRole("link", { name, hidden: true }),
+      ];
+      expect(links.length).toBeGreaterThanOrEqual(2); // desktop nav + drawer
+      for (const link of links) {
+        expect(link.getAttribute("href")).toMatch(/^#[a-z-]+$/);
+        expect(document.getElementById(link.getAttribute("href")!.slice(1))).toBeTruthy();
+      }
+    }
+    // The route link is not a fragment link.
+    expect(within(banner).getByRole("link", { name: /Try the Chat/ }).getAttribute("href")).toBe("/chat");
   });
 });

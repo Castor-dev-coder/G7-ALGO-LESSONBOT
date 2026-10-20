@@ -7,15 +7,27 @@
  * client follows it. Recent conversations persist in browser-local storage —
  * no accounts, no database, nothing uploaded.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatBlock, LearningLevel, TopicSummary } from "@shared/contract";
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import type { AssessmentSubmitResponse, ChatBlock, LearningLevel, TopicSummary } from "@shared/contract";
 import { TUTOR_ACTIONS } from "@shared/contract";
-import { api, streamChat } from "./api/client";
+import { api, friendlyError, streamChat } from "./api/client";
 import { ChatThread } from "./components/chat/ChatThread";
 import { Composer } from "./components/chat/Composer";
 import { Header } from "./components/chat/Header";
 import { Sidebar } from "./components/chat/Sidebar";
 import { PrivacyNotice } from "./components/chat/PrivacyNotice";
+import { QuizSetup, type QuizSetupValue } from "./components/quiz/QuizSetup";
+import { QuizView, type LoadedAssessment } from "./components/quiz/QuizView";
+import {
+  IconArrowDownToLine,
+  IconCompare,
+  IconGraph,
+  IconLayers,
+  IconLightbulb,
+  IconProof,
+  IconQuiz,
+  type IconProps,
+} from "./components/icons";
 import {
   loadConversations,
   newConversationId,
@@ -68,15 +80,17 @@ export interface AppProps {
 
 /**
  * Capability suggestions. Each one submits a REAL message; servers route it
- * from the message content itself — no topic pre-selection is implied.
+ * from the message content itself — no topic pre-selection is implied. Six,
+ * not sixty: enough to show the range of the product without turning the empty
+ * state into a topic catalogue.
  */
-const CAPABILITY_CHIPS: { label: string; prompt: string; hint: string }[] = [
-  { label: "Explain a concept", prompt: "Explain polynomial-time reductions to me as a beginner", hint: "Plain-language intro to reductions" },
-  { label: "Prove a theorem", prompt: "Show me the formal proof of the Cook–Levin theorem", hint: "Formal statement and proof sketch" },
-  { label: "Run an algorithm", prompt: "Run a randomized Max-Cut demo", hint: "Verified step-by-step solver trace" },
-  { label: "Visualize a graph", prompt: "Visualize a Vertex Cover example on a graph", hint: "Graph rendering of a worked instance" },
-  { label: "Compare approaches", prompt: "Compare Vertex Cover approximation with randomized Max-Cut", hint: "Guarantees and trade-offs" },
-  { label: "Generate a practice question", prompt: "Generate a practice question for me", hint: "Graded quiz from the validated bank" },
+const CAPABILITY_CHIPS: { label: string; prompt: string; hint: string; Icon: (p: IconProps) => ReactElement }[] = [
+  { label: "Explain a concept", prompt: "Explain polynomial-time reductions to me as a beginner", hint: "Plain-language intro to reductions", Icon: IconLightbulb },
+  { label: "Prove a theorem", prompt: "Show me the formal proof of the Cook–Levin theorem", hint: "Formal statement and proof sketch", Icon: IconProof },
+  { label: "Run an algorithm", prompt: "Run a randomized Max-Cut demo", hint: "Verified step-by-step solver trace", Icon: IconGraph },
+  { label: "Visualize a graph", prompt: "Visualize a Vertex Cover example on a graph", hint: "Graph rendering of a worked instance", Icon: IconLayers },
+  { label: "Compare approaches", prompt: "Compare Vertex Cover approximation with randomized Max-Cut", hint: "Guarantees and trade-offs", Icon: IconCompare },
+  { label: "Generate a practice question", prompt: "Generate a practice question for me", hint: "Graded quiz from the validated bank", Icon: IconQuiz },
 ];
 
 let idCounter = 0;
@@ -118,6 +132,24 @@ export default function App({ prefill = null, topicFromRoute = null }: AppProps 
   const [provider, setProvider] = useState<ProviderStatus>({ provider: "curated", enabled: false });
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  /** The header menu button that opens the drawer; focus returns to it. */
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
+  const drawerWasOpen = useRef(false);
+  /**
+   * Closing the drawer has to hand focus back to whatever opened it — Escape,
+   * the scrim, the close button and "pick a topic" all end here, and without
+   * this a keyboard user is dropped onto <body> with no idea where they are.
+   */
+  useEffect(() => {
+    if (drawerWasOpen.current && !drawerOpen) {
+      const trigger = drawerTriggerRef.current;
+      // `getClientRects()` is the reliable "is this focusable at all" test:
+      // below 1024px the header menu button is the only way in, above it the
+      // header is display:none, and focusing that would be a silent no-op.
+      if (trigger && trigger.getClientRects().length > 0) trigger.focus();
+    }
+    drawerWasOpen.current = drawerOpen;
+  }, [drawerOpen]);
   /** Seed question from a landing-page topic action, handed to the composer. */
   const [draft, setDraft] = useState<string | null>(prefill);
 
@@ -125,6 +157,63 @@ export default function App({ prefill = null, topicFromRoute = null }: AppProps 
   const [conversations, setConversations] = useState<StoredConversation[]>(() => loadConversations());
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
+
+  // Quiz (assessment) view. `quizSetupOpen` shows the setup dialog; `quiz`
+  // holds a loaded assessment to take. Both are null when the chat is showing,
+  // so the conversation state is never disturbed by taking a quiz.
+  const [quizSetupOpen, setQuizSetupOpen] = useState(false);
+  const [quizBusy, setQuizBusy] = useState(false);
+  const [quizError, setQuizError] = useState<string | null>(null);
+  const [quiz, setQuiz] = useState<LoadedAssessment | null>(null);
+
+  const openQuizSetup = useCallback(() => {
+    setQuizError(null);
+    setQuizSetupOpen(true);
+  }, []);
+
+  const closeQuizSetup = useCallback(() => {
+    setQuizSetupOpen(false);
+    setQuizError(null);
+  }, []);
+
+  /**
+   * Request an assessment. Any failure is shown, never swallowed: the setup
+   * dialog stays open with the server's message so the student can change the
+   * length or scope and try again rather than finding an empty screen.
+   */
+  const generateQuiz = useCallback(async (value: QuizSetupValue) => {
+    setQuizBusy(true);
+    setQuizError(null);
+    try {
+      const res = await api.createAssessment({
+        count: value.count,
+        ...(value.topicId ? { topicId: value.topicId } : {}),
+        difficulty: value.difficulty,
+        format: value.format,
+      });
+      setQuiz({ assessment: res.assessment, questions: res.questions, notes: res.notes });
+      setQuizSetupOpen(false);
+    } catch (err) {
+      setQuizError(friendlyError(err));
+    } finally {
+      setQuizBusy(false);
+    }
+  }, []);
+
+  const exitQuiz = useCallback(() => setQuiz(null), []);
+  const startNewQuiz = useCallback(() => {
+    setQuiz(null);
+    setQuizError(null);
+    setQuizSetupOpen(true);
+  }, []);
+
+  const submitQuiz = useCallback(
+    (assessmentId: string, answers: Record<string, number | null>): Promise<AssessmentSubmitResponse> =>
+      api.submitAssessment({ assessmentId, answers }),
+    [],
+  );
+
+  const fetchAnswerKey = useCallback((assessmentId: string) => api.getAssessmentAnswerKey(assessmentId), []);
 
   // Auto-scroll: only when the user is already near the bottom.
   const threadRef = useRef<HTMLDivElement>(null);
@@ -243,10 +332,28 @@ export default function App({ prefill = null, topicFromRoute = null }: AppProps 
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
   }, [messages]);
 
+  // Set when the reader has scrolled away from the newest content while a
+  // response is still arriving. Auto-scroll never fights them — they get an
+  // explicit control instead, which is the one case the brief allows for
+  // scrolling on the user's behalf.
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+
   const onThreadScroll = useCallback(() => {
     const el = threadRef.current;
     if (!el) return;
-    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    stickToBottom.current = nearBottom;
+    setShowJumpToLatest(!nearBottom);
+  }, []);
+
+  const jumpToLatest = useCallback(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    // `auto` resolves to the thread's own `scroll-behavior`, which is an
+    // immediate jump: a smooth scroll would fight the streaming auto-scroll.
+    stickToBottom.current = true;
+    setShowJumpToLatest(false);
+    el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
   }, []);
 
   const cancelRef = useRef<(() => void) | null>(null);
@@ -273,6 +380,7 @@ export default function App({ prefill = null, topicFromRoute = null }: AppProps 
       };
       const assistantId = nextId();
       stickToBottom.current = true;
+      setShowJumpToLatest(false);
 
       // Phase 7: bounded, fact-bearing conversation history. The last user
       // messages plus the assistant text AND structured facts (verified
@@ -392,6 +500,7 @@ export default function App({ prefill = null, topicFromRoute = null }: AppProps 
     };
     setDrawerOpen(false);
     stickToBottom.current = true;
+    setShowJumpToLatest(false);
   }, [stop, topicId, level]);
 
   const regenerate = useCallback(() => {
@@ -433,6 +542,7 @@ export default function App({ prefill = null, topicFromRoute = null }: AppProps 
       setLevel(conv.level);
       setDrawerOpen(false);
       stickToBottom.current = true;
+      setShowJumpToLatest(false);
     },
     [conversations, stop],
   );
@@ -472,6 +582,10 @@ export default function App({ prefill = null, topicFromRoute = null }: AppProps 
         level={level}
         onLevelChange={setLevel}
         onNewChat={reset}
+        onCreateQuiz={() => {
+          openQuizSetup();
+          setDrawerOpen(false);
+        }}
         onShowPrivacy={() => {
           setShowPrivacy(true);
           setDrawerOpen(false);
@@ -492,9 +606,24 @@ export default function App({ prefill = null, topicFromRoute = null }: AppProps 
           level={level}
           provider={provider}
           onOpenDrawer={() => setDrawerOpen(true)}
+          triggerRef={drawerTriggerRef}
           streaming={Boolean(streamingId)}
           conversationTitle={conversationTitle}
         />
+        {quiz ? (
+          /* A focused surface, not a modal: a 50-question paper in a dialog
+             would be unusable on a phone. The chat underneath keeps its
+             state, so leaving the quiz returns to exactly where it was. */
+          <QuizView
+            data={quiz}
+            onExit={exitQuiz}
+            onNewQuiz={startNewQuiz}
+            submit={submitQuiz}
+            fetchAnswerKey={fetchAnswerKey}
+          />
+        ) : (
+          <>
+            <div className="thread-wrap">
         <main
           className="thread"
           ref={threadRef}
@@ -513,25 +642,46 @@ export default function App({ prefill = null, topicFromRoute = null }: AppProps 
                   run verified algorithms step by step, and draw graphs.
                   {provider.enabled ? " Responses are AI-generated." : " Responses come from curated, offline lessons."}
                 </p>
-                <div className="starter-chips" role="group" aria-label="Capabilities">
-                  {CAPABILITY_CHIPS.map((chip) => (
+                {/* Six real request paths, each sending the message it names.
+                    They are starters, not a catalogue: every one of them routes
+                    through the same send path as typing the question yourself. */}
+                <div className="starter-chips" role="group" aria-label="Suggested starting points">
+                  {CAPABILITY_CHIPS.map(({ label, prompt, hint, Icon }) => (
                     <button
-                      key={chip.label}
+                      key={label}
                       type="button"
-                      className="chip"
-                      title={chip.hint}
-                      onClick={() => void send(chip.prompt)}
+                      className="chip starter-chip"
+                      title={prompt}
+                      onClick={() => void send(prompt)}
                     >
-                      {chip.label}
+                      <span className="starter-chip-icon" aria-hidden="true">
+                        <Icon size={18} />
+                      </span>
+                      <span className="starter-chip-text">
+                        <span className="starter-chip-label">{label}</span>
+                        <span className="starter-chip-hint">{hint}</span>
+                      </span>
                     </button>
                   ))}
                 </div>
-                {(conversationStateRef.current.id || conversations.length > 0) && null}
                 {conversations.length > 0 && (
                   <p className="welcome-note">
-                    Your recent conversations are kept in this browser only — open one from the menu tab.
+                    Your recent conversations are kept in this browser only — open one from the menu.
                   </p>
                 )}
+                {/* Second entry point to the quiz. On a phone the sidebar is a
+                    drawer, so without this a student would have to open the
+                    menu to find the feature at all. */}
+                <div className="welcome-quiz">
+                  <button type="button" className="btn btn-secondary" onClick={openQuizSetup}>
+                    <IconQuiz />
+                    Create a quiz
+                  </button>
+                  <p className="welcome-quiz-hint">
+                    Ten to fifty questions across every topic, graded when you submit — and printable as a paper
+                    worksheet.
+                  </p>
+                </div>
               </div>
             ) : (
               <ChatThread
@@ -543,14 +693,38 @@ export default function App({ prefill = null, topicFromRoute = null }: AppProps 
             )}
           </div>
         </main>
+        {/* Only ever offered when the reader has scrolled away from the
+            newest content; auto-scroll never overrides them otherwise. The
+            wrapper puts it at the foot of the reading area: inside the
+            scrolling box it would scroll away, over the composer it would
+            cover the input. */}
+        {showJumpToLatest && messages.length > 0 && (
+          <button type="button" className="jump-latest" onClick={jumpToLatest}>
+            <IconArrowDownToLine />
+            Latest
+          </button>
+        )}
+        </div>
         <Composer
           onSend={(text) => void send(text)}
           onStop={stop}
           streaming={Boolean(streamingId)}
           draft={draft}
+          hintId="composer-hint"
           placeholder="Ask anything — e.g. 'run a Max-Cut demo' or 'explain the formal proof'"
         />
+          </>
+        )}
       </div>
+      {quizSetupOpen && (
+        <QuizSetup
+          topics={topics}
+          onGenerate={(value) => void generateQuiz(value)}
+          onClose={closeQuizSetup}
+          busy={quizBusy}
+          error={quizError}
+        />
+      )}
       {showPrivacy && <PrivacyNotice onClose={() => setShowPrivacy(false)} />}
     </div>
   );

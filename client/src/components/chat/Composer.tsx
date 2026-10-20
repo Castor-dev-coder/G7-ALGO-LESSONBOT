@@ -8,6 +8,7 @@
  * visitor's behalf — they press Send themselves.
  */
 import { useEffect, useRef, useState } from "react";
+import { IconArrowUp, IconStop } from "../icons";
 
 interface ComposerProps {
   onSend: (text: string) => void;
@@ -17,18 +18,23 @@ interface ComposerProps {
   placeholder?: string;
   /** Seed question from the route; applied when it changes. */
   draft?: string | null;
+  /** id of the element describing the composer, for aria-describedby. */
+  hintId?: string;
 }
 
-export function Composer({ onSend, onStop, streaming, placeholder, draft = null }: ComposerProps) {
+export function Composer({ onSend, onStop, streaming, placeholder, draft = null, hintId }: ComposerProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-grow the textarea up to a cap.
+  // Auto-grow the textarea up to a cap. The cap is read from the computed
+  // style rather than re-typed in JS, so the visual and behavioural limits
+  // cannot drift apart.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
+    const max = Number.parseFloat(getComputedStyle(el).maxHeight) || 200;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
   }, [value]);
 
   // Apply a seed question: fill the input, put the caret at the end, focus it.
@@ -57,6 +63,8 @@ export function Composer({ onSend, onStop, streaming, placeholder, draft = null 
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
+              // Enter sends on a hardware keyboard; Shift+Enter always makes a
+              // newline, and composing IME text is never treated as a submit.
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 if (!streaming) submit();
@@ -64,6 +72,7 @@ export function Composer({ onSend, onStop, streaming, placeholder, draft = null 
             }}
             placeholder={placeholder ?? "Ask a question, request an example, or say “quiz me”…"}
             aria-label="Message input"
+            aria-describedby={hintId}
             rows={1}
             className="composer-input"
           />
@@ -75,7 +84,8 @@ export function Composer({ onSend, onStop, streaming, placeholder, draft = null 
               aria-label="Stop generating"
               title="Stop generating"
             >
-              <span className="stop-square" aria-hidden="true" />
+              <IconStop />
+              <span className="send-label">Stop</span>
             </button>
           ) : (
             <button
@@ -84,13 +94,14 @@ export function Composer({ onSend, onStop, streaming, placeholder, draft = null 
               disabled={!value.trim()}
               className="btn btn-primary composer-send"
               aria-label="Send message"
+              title="Send message"
             >
-              ↑
+              <IconArrowUp />
               <span className="send-label">Send</span>
             </button>
           )}
         </div>
-        <p className="composer-hint">
+        <p className="composer-hint" id={hintId}>
           <span className="hint-desktop">Enter to send · Shift+Enter for a new line · </span>
           Answers are computed by deterministic solvers; always check formal claims against your course notes.
         </p>

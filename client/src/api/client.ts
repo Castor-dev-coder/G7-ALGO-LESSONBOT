@@ -7,6 +7,11 @@
  * the API origin (e.g. https://api.example.com).
  */
 import type {
+  AssessmentAnswerKeyResponse,
+  AssessmentGenerateRequest,
+  AssessmentGenerateResponse,
+  AssessmentSubmitRequest,
+  AssessmentSubmitResponse,
   ChatBlock,
   ChatRequest,
   ChatResponse,
@@ -78,6 +83,46 @@ export const api = {
     ),
   gradeQuiz: (body: QuizGradeRequest) =>
     request<QuizGradeResponse>("/api/quizzes/grade", { method: "POST", body: JSON.stringify(body) }),
+
+  // -------------------------------------------------------------------------
+  // Assessments (mixed-topic quizzes, 10–50 questions)
+  //
+  // The response to `createAssessment` carries KEYLESS questions only. The
+  // answer key is fetched separately, by an explicit action, and grading
+  // happens server-side against the stored key.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build an assessment of exactly the requested length. `count` is a closed
+   * set (10/20/30/40/50); the server rejects anything else rather than
+   * rounding to the nearest length it happens to be able to build.
+   */
+  createAssessment: (body: AssessmentGenerateRequest) =>
+    request<AssessmentGenerateResponse & { notes?: string[] }>("/api/quizzes/assessment", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /** Reload an active session's keyless questions (e.g. after a refresh). */
+  getAssessment: (id: string) =>
+    request<AssessmentGenerateResponse & { alreadySubmitted?: boolean; result?: AssessmentSubmitResponse }>(
+      `/api/quizzes/assessment/${encodeURIComponent(id)}`,
+    ),
+
+  /** Server-authoritative grading. A duplicate submit replays the first result. */
+  submitAssessment: (body: AssessmentSubmitRequest) =>
+    request<AssessmentSubmitResponse & { alreadySubmitted?: boolean }>(
+      `/api/quizzes/assessment/${encodeURIComponent(body.assessmentId)}/submit`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
+  /**
+   * The separate answer-key document. This app has no authentication: the
+   * unguessable session id is the only guard, and the UI must say so rather
+   * than implying this is an access-controlled instructor feature.
+   */
+  getAssessmentAnswerKey: (id: string) =>
+    request<AssessmentAnswerKeyResponse>(`/api/quizzes/assessment/${encodeURIComponent(id)}/key`),
 };
 
 // ---------------------------------------------------------------------------

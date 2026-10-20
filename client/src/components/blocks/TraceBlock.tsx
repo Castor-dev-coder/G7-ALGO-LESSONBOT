@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { AlgorithmTrace } from "@shared/contract";
+import { IconArrowLeft, IconArrowRight, IconRestart } from "../icons";
 import { GraphBlock } from "./GraphBlock";
 import { TableBlock } from "./TableBlock";
 
@@ -45,16 +46,39 @@ export function TraceBlock({ trace }: TraceBlockProps) {
 
       {/* Step controls */}
       <div className="trace-controls" role="group" aria-label="Trace step controls">
-        <button type="button" className="btn btn-small" onClick={() => goTo(step - 1)} disabled={step === 0} aria-label="Previous step">
-          ← Prev
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={() => goTo(step - 1)}
+          disabled={step === 0}
+          aria-label="Previous step"
+          title="Previous step"
+        >
+          <IconArrowLeft size={15} />
+          Prev
         </button>
         <span className="trace-step-indicator" aria-live="polite">
           Step {current.step} of {total}
         </span>
-        <button type="button" className="btn btn-small" onClick={() => goTo(step + 1)} disabled={step >= total - 1} aria-label="Next step">
-          Next →
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={() => goTo(step + 1)}
+          disabled={step >= total - 1}
+          aria-label="Next step"
+          title="Next step"
+        >
+          Next
+          <IconArrowRight size={15} />
         </button>
-        <button type="button" className="btn btn-small" onClick={() => goTo(0)} aria-label="Reset to first step">
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={() => goTo(0)}
+          aria-label="Reset to first step"
+          title="Reset to the first step"
+        >
+          <IconRestart size={15} />
           Reset
         </button>
       </div>

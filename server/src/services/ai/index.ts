@@ -22,6 +22,15 @@
 import { config, isGeminiEnabled, isXKiroEnabled } from "../../config.js";
 import { CuratedFallbackProvider } from "./curated-fallback.js";
 import {
+  assessScope,
+  findSecretLeaks,
+  findRuntimeClaims,
+  numericCorrectionBlocks,
+  offTopicReply,
+  runtimeClaimNotice,
+  verifyNumericClaims,
+} from "./guardrails.js";
+import {
   clearProviderCooldown,
   isProviderCoolingDown,
   providerCooldown,
@@ -93,7 +102,11 @@ export function providerStatus(): { provider: string; enabled: boolean } {
   };
 }
 
-function withTimeout<T>(promise: Promise<T>): Promise<T> {
+/**
+ * Bound one provider call by the configured AI timeout. Exported so the quiz
+ * generator reuses the SAME budget rather than inventing a second one.
+ */
+export function withTimeout<T>(promise: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(
@@ -131,6 +144,41 @@ export interface StreamOutcome {
    * Undefined whenever the AI provider produced the reply.
    */
   fallbackReason?: string;
+  /**
+   * Set when a guardrail decided the turn instead of the provider (currently:
+   * an off-topic request answered with a deterministic redirect).
+   */
+  guardrail?: { kind: "off_topic"; evidence: string[] };
+}
+
+/**
+ * Post-generation guardrails (C and D): screen the assembled reply for
+ * credential material, and check every labelled number the model stated about
+ * a verified computation against the solver's authoritative result.
+ *
+ * A leaked credential is a hard failure — the reply is replaced by the curated
+ * fallback rather than forwarded. A numeric disagreement is a soft failure:
+ * the model's prose stays visible and an authoritative correction block is
+ * appended, because silently editing streamed text would leave the student
+ * with a half-true answer and no explanation.
+ */
+function applyReplyGuardrails<T extends { blocks: import("../../../../shared/contract.js").ChatBlock[] }>(
+  reply: T,
+  computation: SolverResult | undefined,
+): { reply: T; appended: import("../../../../shared/contract.js").ChatBlock[]; leaked: string[] } {
+  const prose = reply.blocks
+    .filter((b): b is { type: "text"; markdown: string } => b.type === "text")
+    .map((b) => b.markdown)
+    .join("\n\n");
+  const leaked = findSecretLeaks(prose);
+  if (leaked.length > 0) return { reply, appended: [], leaked };
+
+  const appended: import("../../../../shared/contract.js").ChatBlock[] = [];
+  if (computation) {
+    appended.push(...numericCorrectionBlocks(verifyNumericClaims(prose, computation)));
+  }
+  appended.push(...runtimeClaimNotice(findRuntimeClaims(prose)));
+  return { reply, appended, leaked: [] };
 }
 
 /**
@@ -152,6 +200,22 @@ export async function streamWithFallback(
   context: TutorContext,
   streaming?: TutorStreamHandlers,
 ): Promise<StreamOutcome> {
+  // --- Guardrail A: educational scope, decided before any provider call. ---
+  // A request outside algorithms/complexity never spends a provider request
+  // and never risks a model improvising an answer outside its competence.
+  const scope = assessScope(context.message);
+  if (scope.verdict === "off_topic") {
+    const redirect = offTopicReply(context.topicId ?? undefined);
+    const effectiveTopicId = detectTopicId(context.message, context.topicId);
+    streaming?.onResolved?.({ effectiveTopicId });
+    return {
+      reply: { blocks: redirect.blocks, mode: "curated_fallback", topicId: effectiveTopicId },
+      streamedDeltas: false,
+      effectiveTopicId,
+      guardrail: { kind: "off_topic", evidence: scope.evidence },
+    };
+  }
+
   let emitted = false;
   const wrapped: TutorStreamHandlers = {
     ...streaming,
@@ -245,8 +309,24 @@ export async function streamWithFallback(
             : undefined,
         ),
       );
+      // Guardrails C (secrets) and D (numeric authority) run on the assembled
+      // reply, whatever provider produced it.
+      const screened = applyReplyGuardrails(result.reply, computation);
+      if (screened.leaked.length > 0) {
+        // Never forward credential material. Before the first delta the
+        // curated fallback answers honestly; after one, the turn fails loudly
+        // rather than sending a partially leaked reply.
+        if (emitted) throw new Error("provider response contained blocked content");
+        throw Object.assign(
+          new Error("provider response contained blocked content"),
+          { name: "BlockedContentError" },
+        );
+      }
+      const reply = screened.appended.length
+        ? { ...result.reply, blocks: [...result.reply.blocks, ...screened.appended] }
+        : result.reply;
       return {
-        reply: result.reply,
+        reply,
         streamedDeltas: emitted,
         usage: result.usage,
         computation,
