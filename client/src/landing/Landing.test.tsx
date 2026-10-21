@@ -406,3 +406,48 @@ describe("landing — smooth section navigation", () => {
     expect(within(banner).getByRole("link", { name: /Try the Chat/ }).getAttribute("href")).toBe("/chat");
   });
 });
+
+describe("landing — gutter backdrop", () => {
+  const css = readLandingCss();
+
+  it("renders one decorative layer as main's first child, inert to everyone", async () => {
+    render(<Landing />);
+    const main = screen.getByRole("main");
+    const backdrop = main.querySelector(".lp-main-bg");
+
+    expect(backdrop, "the gutter backdrop must render").toBeTruthy();
+    expect(main.firstElementChild).toBe(backdrop);
+    // Decorative: hidden from assistive tech and containing nothing that can
+    // take focus, be clicked, or be read as content.
+    expect(backdrop!.getAttribute("aria-hidden")).toBe("true");
+    expect(backdrop!.querySelectorAll("a, button, input, select, textarea, [tabindex]")).toHaveLength(0);
+    expect(backdrop!.textContent).toBe("");
+    // Exactly two network strips — no competing full-page graph system.
+    expect(main.querySelectorAll(".lp-main-net")).toHaveLength(2);
+    expect(main.querySelectorAll(".lp-main-bg svg")).toHaveLength(2);
+  });
+
+  it("stays out of the layout and behind the real content", () => {
+    // Positioned, zero-inset, clipped, and transparent to the pointer: the
+    // layer can only paint, never size, move, or intercept.
+    expect(css).toMatch(/\.lp-main-bg\s*\{[^}]*position:\s*absolute/);
+    expect(css).toMatch(/\.lp-main-bg\s*\{[^}]*inset:\s*0/);
+    expect(css).toMatch(/\.lp-main-bg\s*\{[^}]*pointer-events:\s*none/);
+    expect(css).toMatch(/\.lp-main-bg\s*\{[^}]*overflow:\s*hidden/);
+    // Real sections stack above the layer.
+    expect(css).toMatch(/\.lp-main > \.lp-section\s*\{[^}]*z-index:\s*1/);
+    // ...and the column itself is untouched: same max-width as before.
+    expect(css).toMatch(/\.lp-section\s*\{[^}]*max-width:\s*1200px/);
+  });
+
+  it("keeps the dot grid and the static network under reduced motion", () => {
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    // The travelling signals are gone, the draw-in and the node pulse are
+    // frozen on their finished state...
+    expect(reduced).toMatch(/\.lp-main-bg \.lp-signal/);
+    expect(reduced).toMatch(/\.lp-main-edge/);
+    expect(reduced).toMatch(/\.lp-main-node-hi/);
+    // ...while the grid itself is plain background painting, not animation.
+    expect(css).toMatch(/\.lp-main-dots\s*\{[^}]*background-image:\s*radial-gradient/);
+  });
+});

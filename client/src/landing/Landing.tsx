@@ -20,6 +20,7 @@ import { chatHref, Link } from "../lib/router";
 import { AlgoScene } from "./AlgoScene";
 import { HeroBackdrop, HeroTicker, useHeroExample } from "./HeroExample";
 import { IconArrowDown, IconArrowRight, IconChat, IconClose, IconMenu, IconRestart } from "./icons";
+import { MainBackdrop } from "./MainBackdrop";
 import { SceneThumb, sceneForTopic } from "./SceneThumb";
 import { TabStrip, tabIds } from "./TabStrip";
 import {
@@ -673,6 +674,10 @@ export function Landing() {
       </a>
       <Nav />
       <main id="lp-main" tabIndex={-1}>
+        {/* Decorative computational canvas filling the side gutters; first in
+            main so it paints behind the sections, which sit above it in
+            z-order. Inert: aria-hidden, pointer-events none, out of flow. */}
+        <MainBackdrop />
         <Hero />
         <TopicRail topics={topics} />
         <DemoSection />

@@ -472,6 +472,10 @@
   position: relative;
   overflow: hidden;
   border-bottom: 1px solid var(--lp-line);
+  /* Its own field is composed against plain paper, and the gutter backdrop
+     runs behind it: an explicit paper fill keeps the two layers separate —
+     paint only, the hero's box is unchanged. */
+  background: var(--lp-paper);
 }
 
 /* Decorative layered field behind the hero content. Absolutely positioned
@@ -1432,9 +1436,161 @@
 /* The skip link targets <main>, whose document top is exactly the sticky
    nav's height. Without an offset, activating it scrolls main's first 65px
    *under* the nav; with one, the jump resolves to the top of the document,
-   where the nav and the hero already clear each other. */
+   where the nav and the hero already clear each other. Main is also the
+   positioning context for the gutter backdrop below. */
 #lp-main {
   scroll-margin-top: 76px;
+  /* Positioning context for the gutter backdrop below. */
+  position: relative;
+}
+
+/* ------------------------------------------------------- gutter backdrop
+
+   The sections below the hero are a 1200px centred column, so on wide
+   viewports their side margins are bare paper. `.lp-main-bg` paints that
+   space — a dotted technical grid over all of main, soft accent glows, and
+   a sparse graph network in each outer gutter — as one absolutely positioned
+   layer. It carries no content, takes no pointer events, and the real
+   children of main sit above it (z-index 1), so it can never change the
+   column's width, intercept a click, or paint over text. The layer spans
+   main's box and clips to it, so no decoration can overflow the page. */
+.lp-main-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* Soft accent lighting hugging the outer edges — light, not a panel. */
+.lp-main-glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(300px 420px at 2% 14%, rgba(67, 56, 202, 0.05), transparent 70%),
+    radial-gradient(340px 460px at 98% 40%, rgba(29, 78, 216, 0.045), transparent 72%),
+    radial-gradient(280px 400px at 1% 74%, rgba(67, 56, 202, 0.04), transparent 70%);
+}
+/* The dotted technical grid: small accent-derived points on a 26px rhythm.
+   The centre fade is computed against the 1200px column — the dots run at
+   full strength in the real gutters and ease to a third behind the content,
+   where they read as paper texture. Where the viewport is narrower than the
+   column the calc() stops clamp to the edges and the whole field sits at
+   that third strength: no breakpoint needed to keep it quiet on small
+   screens. */
+.lp-main-dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 1px 1px, rgba(67, 56, 202, 0.2) 1px, transparent 1.6px);
+  background-size: 26px 26px;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    #000 0,
+    #000 calc(50% - 690px),
+    rgba(0, 0, 0, 0.33) calc(50% - 600px),
+    rgba(0, 0, 0, 0.33) calc(50% + 600px),
+    #000 calc(50% + 690px),
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    #000 0,
+    #000 calc(50% - 690px),
+    rgba(0, 0, 0, 0.33) calc(50% - 600px),
+    rgba(0, 0, 0, 0.33) calc(50% + 600px),
+    #000 calc(50% + 690px),
+    #000 100%
+  );
+}
+/* Gutter networks: sized to the real gutter plus a 72px overlap that the
+   mask fades out, so a strip always ends before it can reach the column.
+   Hidden until a genuine gutter exists (≥1360px); below that the dots
+   alone carry the surface, and squeezing nodes into the content column is
+   exactly what must not happen. */
+.lp-main-net {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: none;
+  width: min(240px, calc(max(0px, (100% - 1200px)) / 2 + 72px));
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 72px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 72px), transparent 100%);
+}
+.lp-main-net--left {
+  left: 0;
+}
+.lp-main-net--right {
+  right: 0;
+  -webkit-mask-image: linear-gradient(270deg, #000 calc(100% - 72px), transparent 100%);
+  mask-image: linear-gradient(270deg, #000 calc(100% - 72px), transparent 100%);
+}
+@media (min-width: 1360px) {
+  .lp-main-net {
+    display: block;
+  }
+}
+.lp-main-net svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* The extra nodes/edges only join on the widest screens, so medium desktops
+   get a sparser network before the strips disappear entirely. */
+.lp-main-net-extra {
+  display: none;
+}
+@media (min-width: 1560px) {
+  .lp-main-net-extra {
+    display: inline;
+  }
+}
+/* Same progressive draw as the hero backdrop's lattice, staggered per edge;
+   the base state is "drawn", so reduced motion (animation: none) shows the
+   finished network. */
+.lp-main-edge {
+  stroke: var(--lp-line-2);
+  stroke-width: 1;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: lp-bg-draw 1.4s var(--lp-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 0.09s);
+}
+.lp-main-node {
+  fill: var(--lp-line-2);
+}
+/* A couple of nodes per tile breathe with a soft accent highlight — the
+   "occasional node life" of the canvas, slow enough to stay subordinate. */
+.lp-main-node-hi {
+  fill: var(--lp-accent);
+  opacity: 0.6;
+  animation: lp-main-pulse 6.5s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 1.7s);
+}
+@keyframes lp-main-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.22;
+  }
+}
+/* The travelling signal is the hero's own, eased back and slowed right down;
+   each side paces it differently so the two strips never pulse in step. */
+.lp-main-signal {
+  opacity: 0.45;
+  stroke-width: 2;
+  animation-duration: 3.8s;
+}
+.lp-main-net--right .lp-main-signal {
+  animation-duration: 5.4s;
+}
+/* The real content paints above the decorative layer. Positioned + raised
+   so text, cards and rules are never overdrawn by the backdrop; the hero is
+   already positioned and comes later in the tree, so it stacks above too. */
+.lp-main > .lp-rail,
+.lp-main > .lp-section {
+  position: relative;
+  z-index: 1;
 }
 
 /* Anchor navigation eases into place while the landing page is mounted.
@@ -1886,11 +2042,15 @@ html:has(> body > #root > .lp) {
   .lp-mapping-track,
   .lp-bg-edge,
   .lp-bg-mesh-edge,
+  .lp-main-edge,
+  .lp-main-node-hi,
   .lp-ticker-cell {
     animation: none !important;
   }
-  /* No travelling dashes at all in the decorative layer. */
-  .lp-hero-bg .lp-signal {
+  /* No travelling dashes at all in the decorative layers. The dot grid and
+     the gutter networks themselves are not animation and stay put. */
+  .lp-hero-bg .lp-signal,
+  .lp-main-bg .lp-signal {
     display: none;
   }
   .lp-drawer {
